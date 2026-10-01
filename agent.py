@@ -70,7 +70,7 @@ def email_report(subject, body, transcript_path):
     msg = EmailMessage()
     msg["Subject"], msg["From"], msg["To"] = subject, os.environ["GMAIL_ADDRESS"], os.environ["REPORT_TO"]
     msg.set_content(body)
-    html = markdown.markdown(body)
+    html = markdown.markdown(body, extensions=["nl2br","sane_lists"])
     msg.add_alternative(f"""<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#222">
 <div style="background:#1a73e8;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0">
 <h2 style="margin:0">Meeting Report Card</h2>
