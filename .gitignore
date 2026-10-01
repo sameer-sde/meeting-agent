@@ -1,0 +1,7 @@
+.env
+venv/
+__pycache__/
+reports/
+transcript.json
+report.md
+last_meeting.json
