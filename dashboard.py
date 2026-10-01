@@ -1,7 +1,7 @@
 import os, glob, threading, time, requests, markdown
 from flask import Flask, request, redirect, render_template_string, abort, url_for
 from dotenv import load_dotenv
-import watcher
+import watcher, attendance
 from agent import send_bot, stop_bot
 
 load_dotenv()
@@ -33,6 +33,18 @@ a{color:#1a73e8;text-decoration:none}.muted{color:#888}.report{line-height:1.6}
 <div class="row"><label><input type="radio" name="mode" value="translate" checked> English translation</label>
 <label><input type="radio" name="mode" value="transcribe"> Original language</label>
 <button type="submit">Send bot</button></div></form></div>
+<div class="card"><h2>Calendar auto-join</h2>
+<form method="post" action="{{ url_for('cal_connect') }}">
+<input type="text" name="name" placeholder="Name, e.g. Personal or Work" required>
+<div class="row"><input type="text" name="ics_url" placeholder="Paste your calendar's SECRET iCal address" required></div>
+<div class="row"><button type="submit">Connect calendar</button></div></form>
+{% if cals %}<table style="margin-top:14px">{% for c in cals %}<tr><td><b>{{ c.name }}</b></td>
+<td class="muted">{{ 'Auto-join ON' if c.auto_join else 'Auto-join OFF' }}</td>
+<td><form method="post" action="{{ url_for('cal_sync', cid=c.id) }}"><button>Sync now</button></form></td>
+<td><form method="post" action="{{ url_for('cal_delete', cid=c.id) }}"><button class="stop">Disconnect</button></form></td></tr>{% endfor %}</table>{% endif %}
+<h2 style="margin-top:18px">Upcoming meetings (bot will join)</h2>
+{% if upcoming %}<table>{% for m in upcoming %}<tr><td>{{ m.when }}</td><td>{{ m.title }}</td><td class="muted">{{ m.platform }}</td></tr>{% endfor %}</table>
+{% else %}<p class="muted">No upcoming meetings with a Meet/Teams link.</p>{% endif %}</div>
 <div class="card"><h2>Bots in meetings now</h2>
 {% if bots %}<table>{% for b in bots %}<tr><td>{{ b.platform }}</td><td>{{ b.native_meeting_id }}</td><td>{{ b.status }}</td>
 <td><form method="post" action="{{ url_for('stop', platform=b.platform, mid=b.native_meeting_id) }}"><button class="stop">Stop</button></form></td></tr>{% endfor %}</table>
@@ -61,7 +73,7 @@ def report_files():
 
 @app.route("/")
 def index():
-    return render_template_string(PAGE, bots=running_bots(), reports=report_files(),
+    return render_template_string(PAGE, bots=running_bots(), reports=report_files(), cals=calendars(), upcoming=upcoming(),
                                   msg=request.args.get("msg"), report_html=None)
 
 @app.post("/send")
@@ -83,7 +95,63 @@ def report(name):
     if name not in {r["file"] for r in report_files()}:
         abort(404)
     html = markdown.markdown(open(os.path.join("reports", name)).read(), extensions=["nl2br","sane_lists"])
-    return render_template_string(PAGE, report_html=html, msg=None, bots=[], reports=[])
+    return render_template_string(PAGE, report_html=html, msg=None, bots=[], reports=[], cals=[], upcoming=[])
+
+TX_H = {"X-API-Key": os.environ["VEXA_TX_KEY"]}
+
+def calendars():
+    try:
+        r = requests.get(f"{BASE}/user/calendars", headers=BOT_H, timeout=10)
+        d = r.json() if r.ok else []
+        return d if isinstance(d, list) else d.get("calendars", d.get("items", []))
+    except Exception:
+        return []
+
+def upcoming():
+    from datetime import datetime
+    try:
+        r = requests.get(f"{BASE}/meetings", headers=TX_H, params={"status": "scheduled", "limit": 20}, timeout=10)
+        d = r.json() if r.ok else []
+        rows = d if isinstance(d, list) else d.get("meetings", [])
+    except Exception:
+        return []
+    out = []
+    for m in rows:
+        if m.get("platform") in (None, "unknown"):
+            continue
+        when = (m.get("data") or {}).get("scheduled_at") or m.get("scheduled_at") or ""
+        try:
+            when = datetime.fromisoformat(when.replace("Z", "+00:00")).astimezone().strftime("%d %b, %I:%M %p")
+        except Exception:
+            pass
+        out.append({"when": when, "title": m.get("title") or m.get("native_meeting_id"), "platform": m.get("platform")})
+    return out
+
+@app.post("/calendar/connect")
+def cal_connect():
+    r = requests.post(f"{BASE}/user/calendars", headers=BOT_H, timeout=20,
+        json={"name": request.form["name"].strip(), "ics_url": request.form["ics_url"].strip(),
+              "auto_join": True, "bot_name": "Meeting Agent"})
+    msg = "Calendar connected! Meetings will be joined automatically." if r.ok else f"Could not connect: {r.text}"
+    return redirect(url_for("index", msg=msg))
+
+@app.post("/calendar/<cid>/sync")
+def cal_sync(cid):
+    r = requests.post(f"{BASE}/user/calendars/{cid}/sync", headers=BOT_H, timeout=30)
+    d = r.json() if r.ok else {}
+    if d.get("last_error"):
+        msg = "Sync problem: " + d["last_error"]
+    elif r.ok:
+        c = d.get("counts", {})
+        msg = f"Synced: {c.get('created',0)} new, {c.get('updated',0)} updated, {c.get('cancelled',0)} cancelled."
+    else:
+        msg = f"Sync failed: {r.text}"
+    return redirect(url_for("index", msg=msg))
+
+@app.post("/calendar/<cid>/delete")
+def cal_delete(cid):
+    r = requests.delete(f"{BASE}/user/calendars/{cid}", headers=BOT_H, timeout=20)
+    return redirect(url_for("index", msg="Calendar disconnected." if r.ok else f"Error: {r.text}"))
 
 def watch_loop():
     done = watcher.load_done()
@@ -104,5 +172,6 @@ def watch_loop():
 
 if __name__ == "__main__":
     threading.Thread(target=watch_loop, daemon=True).start()
+    threading.Thread(target=attendance.loop, daemon=True).start()
     print("Dashboard running at http://localhost:5050")
     app.run(host="127.0.0.1", port=5050, debug=False)
