@@ -65,22 +65,6 @@ details.panel.pop>summary h2{font-size:26px;margin:0 0 4px}
 .chapter:first-of-type{border-top:0}
 .chapter p{margin:4px 0 0;color:var(--muted);font-size:14px}
 p.more{margin:14px 0 0}
-.msgs{display:flex;flex-direction:column;gap:10px;max-height:460px;overflow:auto;padding:4px 2px}
-.msgs:empty{display:none}
-.msg{max-width:82%;padding:10px 14px;border-radius:14px;font-size:15px;line-height:1.55;overflow-wrap:anywhere}
-.msg.user{align-self:flex-end;background:var(--accent);color:#1B1A17;border-bottom-right-radius:4px}
-.msg.bot{align-self:flex-start;background:var(--panel2);border:1px solid var(--line);border-bottom-left-radius:4px}
-.msg.bot.wait{color:var(--muted)}
-.msg.bot.err{color:#F0C6A8;border-color:#5A3B2A}
-.msg.bot p{margin:0 0 8px}.msg.bot p:last-child{margin:0}
-.msg.bot ul,.msg.bot ol{margin:4px 0 8px;padding-left:20px}
-.chips{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 10px}
-.chip{font:13px Manrope,sans-serif;color:var(--ink);background:none;border:1px solid var(--line);border-radius:99px;padding:6px 12px;cursor:pointer}
-.chip:hover{border-color:var(--accent)}
-.send{display:flex;gap:8px}
-.send input{flex:1}
-.clear{margin:10px 0 0}
-.linkbtn{background:none;border:0;padding:0;color:var(--muted);font:13px Manrope,sans-serif;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .rec{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:16px 22px}
 .rec[hidden]{display:none}
 .rec audio{flex:1;min-width:240px;height:40px;color-scheme:dark}
@@ -124,6 +108,7 @@ p.more{margin:14px 0 0}
     <a class="btn accent" href="{{ url_for('mom', rid=m.id) }}">Minutes of Meeting (PDF)</a>
     <a class="btn ghost" href="{{ url_for('attendance_csv', rid=m.id) }}">Download attendance</a>
     {% if lines %}<a class="btn ghost" href="{{ url_for('transcript_txt', rid=m.id) }}">Download transcript</a>{% endif %}
+    {% if lines %}<button type="button" class="btn ghost" data-open-chat>Chat with this meeting</button>{% endif %}
     <a class="btn ghost" href="#share" onclick="document.getElementById('share').open=true">Share with attendees</a>
   </div>
   <details class="panel pop" id="share"><summary><h2>Share this report</h2></summary>
@@ -142,7 +127,7 @@ p.more{margin:14px 0 0}
     <audio id="player" controls preload="none"></audio>
   </section>
   <nav class="tabs" aria-label="Report sections">
-    <a href="#card">Report card</a><a href="#chapters">Chapters</a><a href="#ask">Chat</a><a href="#transcript">Transcript</a><a href="#speakers">Speakers</a><a href="#participation">Participation</a><a href="#mentions">Mentions</a><a href="#attendance">Attendance</a>
+    <a href="#card">Report card</a><a href="#chapters">Chapters</a><a href="#transcript">Transcript</a><a href="#speakers">Speakers</a><a href="#participation">Participation</a><a href="#mentions">Mentions</a><a href="#attendance">Attendance</a>
   </nav>
 
   <section class="panel" id="card">
@@ -161,16 +146,6 @@ p.more{margin:14px 0 0}
       <p class="empty">Chapters haven't been made for this meeting yet.</p>
       <form method="post" action="{{ url_for('extras_generate', rid=m.id) }}" class="tools"><button class="btn accent">Find chapters and tasks</button></form>
     {% else %}<p class="empty">No chapters for this meeting.</p>{% endif %}
-  </section>
-
-  <section class="panel" id="ask">
-    <h2>Chat with this meeting</h2>
-    <p class="hint">Ask anything about this meeting, and ask follow-up questions. The answers come only from what was said in it, and the chat is saved here.</p>
-    {% if lines %}
-      {% set chat_ideas = ["Give me a short summary", "What was decided?", "What do I need to do?", "Who said what?"] %}
-      {% set ask_url = url_for('ask', rid=m.id) %}{% set clear_url = url_for('chat_clear', rid=m.id) %}
-      {% include "_chat.html" %}
-    {% else %}<p class="empty">No speech was recorded for this meeting.</p>{% endif %}
   </section>
 
   <section class="panel" id="transcript">

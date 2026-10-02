@@ -165,8 +165,29 @@ treat it as unfinished and say "so far" where it matters.
 """
 
 
+ALL_PROMPT = """You are the user's meeting notetaker. Below are the report cards of the user's recent
+meetings (newest first) and their open tasks. Answer the question in a chat, using only this.
+Always answer in clear, simple English. Keep answers short: a few sentences, or a short list when
+that is clearer. Say which meeting something is from (by its title and date) when it helps.
+If the notes do not contain the answer, say "I couldn't find that in your recent meetings."
+Do not guess, and do not use knowledge from outside these meetings.
+
+YOUR MEETINGS:
+{transcript}
+
+THE CHAT SO FAR:
+{history}
+
+NEW QUESTION: {question}
+"""
+
+
 def answer(lines, title, question, history=(), live=False):
-    """Reply to a chat question about a meeting. history: [(role, text)], oldest first."""
+    """Reply to a chat question. history: [(role, text)], oldest first.
+
+    title=None means "all recent meetings": `lines` are then report cards, not transcript lines."""
     past = "\n".join(f"{'User' if role == 'user' else 'You'}: {text}" for role, text in history) or "(nothing yet)"
+    if title is None:
+        return _llm(ALL_PROMPT.format(transcript="\n\n".join(lines), history=past, question=question))
     return _llm(CHAT_PROMPT.format(live=LIVE_NOTE if live else "", title=title, transcript="\n".join(lines),
                                    history=past, question=question))

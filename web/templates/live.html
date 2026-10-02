@@ -7,22 +7,7 @@
 .livetag{display:flex;align-items:center;gap:8px;color:var(--live);font-size:13px;margin:0 0 10px}
 .livetag i{width:8px;height:8px;border-radius:50%;background:var(--live)}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 24px;margin-top:18px}
-.msgs{display:flex;flex-direction:column;gap:10px;max-height:460px;overflow:auto;padding:4px 2px}
-.msgs:empty{display:none}
-.msg{max-width:82%;padding:10px 14px;border-radius:14px;font-size:15px;line-height:1.55;overflow-wrap:anywhere}
-.msg.user{align-self:flex-end;background:var(--accent);color:#1B1A17;border-bottom-right-radius:4px}
-.msg.bot{align-self:flex-start;background:var(--panel2);border:1px solid var(--line);border-bottom-left-radius:4px}
-.msg.bot.wait{color:var(--muted)}
-.msg.bot.err{color:#F0C6A8;border-color:#5A3B2A}
-.msg.bot p{margin:0 0 8px}.msg.bot p:last-child{margin:0}
-.msg.bot ul,.msg.bot ol{margin:4px 0 8px;padding-left:20px}
-.chips{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 10px}
-.chip{font:13px Manrope,sans-serif;color:var(--ink);background:none;border:1px solid var(--line);border-radius:99px;padding:6px 12px;cursor:pointer}
-.chip:hover{border-color:var(--accent)}
-.send{display:flex;gap:8px}
-.send input{flex:1}
-.clear{margin:10px 0 0}
-.linkbtn{background:none;border:0;padding:0;color:var(--muted);font:13px Manrope,sans-serif;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.card p{margin:0 0 14px}
 {% endblock %}
 {% block page %}
 <div class="wrap">
@@ -31,9 +16,8 @@
   <h1>Chat with this meeting</h1>
   <p class="hint">Your bot is listening right now. Ask what you missed, and it answers from what has been said so far. Nothing is posted in the meeting; only you see this chat. After the meeting ends, the chat moves to its report card.</p>
   <div class="card">
-    {% set chat_ideas = ["What have I missed so far?", "What is being discussed right now?", "Any decisions so far?", "Was my name mentioned?"] %}
-    {% set ask_url = url_for('live_ask', platform=platform, native=native) %}{% set clear_url = none %}
-    {% include "_chat.html" %}
+    <p>The chat is open at the bottom-left of this page.</p>
+    <button type="button" class="btn accent" data-open-chat>Open the chat</button>
   </div>
 </div>
 {% endblock %}

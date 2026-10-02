@@ -518,8 +518,10 @@ def report(rid):
     share_to = [p for p in people if p["email"] and p["email"].lower() != mine]
     return render_template("report.html", m=m, report_html=html, part_rows=part_rows,
                            mentions=ments, people=people, chapters=chapters, share_to=share_to,
-                           messages=Session.query(ChatMessage).filter_by(user_id=g.user.id, meeting_id=m.id)
-                           .order_by(ChatMessage.id).all(),
+                           widget=_widget("this meeting", url_for("ask", rid=m.id), url_for("chat_clear", rid=m.id),
+                                          {"meeting_id": m.id},
+                                          ["Give me a short summary", "What was decided?", "What do I need to do?",
+                                           "Who said what?"]),
                            open_tasks=Session.query(Task).filter_by(meeting_id=m.id, done=False).count(),
                            lines=analytics.transcript_rows(segs, TZ, JUNK),
                            timeline=analytics.timeline(segs, TZ))
@@ -581,15 +583,70 @@ def chat_html(text):
     return markdown.markdown(html.escape(text or "", quote=False), extensions=["nl2br", "sane_lists"])
 
 
-def _chat_reply(lines, title, where, live=False):
+ALL_KEY = "all"          # the chat about every meeting (the bubble on the dashboard and other pages)
+ALL_MEETINGS = 20        # how many recent report cards that chat reads
+
+
+def _widget(scope, ask_url, clear_url, where, ideas, opened=False):
+    """Everything the chat bubble needs on a page."""
+    msgs = Session.query(ChatMessage).filter_by(user_id=g.user.id, **where).order_by(ChatMessage.id).all()
+    return {"scope": scope, "ask_url": ask_url, "clear_url": clear_url, "messages": msgs, "ideas": ideas,
+            "open": opened}
+
+
+@app.context_processor
+def _default_widget():
+    """On pages that aren't about one meeting, the bubble chats about all of them."""
+    if not getattr(g, "user", None):
+        return {}
+    try:
+        return {"widget": _widget("your meetings", url_for("chat_all"), url_for("chat_all_clear"),
+                                  {"meeting_id": None, "live_key": ALL_KEY},
+                                  ["What did I miss this week?", "What tasks are still open?",
+                                   "What was decided in my last meeting?"])}
+    except Exception as e:
+        print("Chat bubble unavailable:", e)
+        return {}
+
+
+@app.post("/chat/ask")
+@login_required
+def chat_all():
+    rows = (Session.query(Meeting).filter_by(user_id=g.user.id, status="done")
+            .order_by(Meeting.created_at.desc()).limit(ALL_MEETINGS).all())
+    _fill_times(rows)
+    blocks = []
+    for m in rows:
+        t = tasks.meeting_times(m)
+        when = t["start"] or local_time(m.created_at, "%d %b %Y")
+        blocks.append(f"=== MEETING: {m.title} | {when}" + (f" | {t['duration']}" if t["duration"] else "")
+                      + f" ===\n{(m.report_md or '')[:6000]}")
+    todo = Session.query(Task).filter_by(user_id=g.user.id, done=False).order_by(Task.id.desc()).limit(60).all()
+    if blocks and todo:
+        blocks.append("=== OPEN TASKS ===\n" + "\n".join(
+            f"- {t.text} (owner: {t.owner or 'not set'}; due: {t.due or 'not set'}; meeting: {t.meeting.title})"
+            for t in todo))
+    return _chat_reply(blocks, None, {"meeting_id": None, "live_key": ALL_KEY},
+                       empty="You have no report cards yet. Ask me again after your first meeting.")
+
+
+@app.post("/chat/clear")
+@login_required
+def chat_all_clear():
+    Session.query(ChatMessage).filter_by(user_id=g.user.id, meeting_id=None, live_key=ALL_KEY).delete()
+    Session.commit()
+    return redirect(request.referrer or url_for("index"))
+
+
+def _chat_reply(lines, title, where, live=False, empty=None):
     """Answer the posted question, save both sides of the chat, and return JSON for the page."""
     from . import reports
     question = " ".join(((request.get_json(silent=True) or {}).get("question") or "").split())[:500]
     if not question:
         return jsonify(error="Type a question first."), 400
     if not lines:
-        return jsonify(error="Nothing has been said in this meeting yet." if live else
-                       "This meeting has no transcript to ask about."), 400
+        return jsonify(error=empty or ("Nothing has been said in this meeting yet." if live else
+                                       "This meeting has no transcript to ask about.")), 400
     past = (Session.query(ChatMessage).filter_by(user_id=g.user.id, **where)
             .order_by(ChatMessage.id.desc()).limit(CHAT_MEMORY).all())[::-1]
     try:
@@ -618,7 +675,7 @@ def chat_clear(rid):
     m = _own_meeting(rid)
     Session.query(ChatMessage).filter_by(user_id=g.user.id, meeting_id=m.id).delete()
     Session.commit()
-    return redirect(url_for("report", rid=rid) + "#ask")
+    return redirect(url_for("report", rid=rid))
 
 
 def _live_key(platform, native):
@@ -633,9 +690,12 @@ def _live_key(platform, native):
 @needs_keys
 def live(platform, native):
     key = _live_key(platform, native)
-    msgs = (Session.query(ChatMessage).filter_by(user_id=g.user.id, meeting_id=None, live_key=key)
-            .order_by(ChatMessage.id).all())
-    return render_template("live.html", platform=platform, native=native, messages=msgs)
+    return render_template("live.html", platform=platform, native=native,
+                           widget=_widget("the meeting that is running now",
+                                          url_for("live_ask", platform=platform, native=native), None,
+                                          {"meeting_id": None, "live_key": key},
+                                          ["What have I missed so far?", "What is being discussed right now?",
+                                           "Any decisions so far?", "Was my name mentioned?"], opened=True))
 
 
 @app.post("/live/<platform>/<native>/ask")
