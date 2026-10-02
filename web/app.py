@@ -651,8 +651,11 @@ def _chat_reply(lines, title, where, live=False, empty=None):
             .order_by(ChatMessage.id.desc()).limit(CHAT_MEMORY).all())[::-1]
     try:
         reply = reports.answer(lines, title, question, [(m.role, m.text) for m in past], live)
+    except reports.Busy:
+        return jsonify(error="I've answered a lot in the last minute and the free AI limit is full. "
+                             "Wait about a minute and ask again."), 429
     except Exception as e:
-        print("Chat failed:", e)
+        print("Chat failed:", repr(e))
         return jsonify(error="Couldn't get an answer just now. Try again in a minute."), 502
     Session.add(ChatMessage(user_id=g.user.id, role="user", text=question, **where))
     Session.add(ChatMessage(user_id=g.user.id, role="bot", text=reply, **where))

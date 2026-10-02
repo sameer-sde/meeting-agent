@@ -1,5 +1,6 @@
 """Turns a transcript into a report card, using Gemini online (or Ollama when running locally)."""
 import os
+import time
 
 import requests
 
@@ -39,6 +40,10 @@ def clean_lines(data):
     return lines
 
 
+class Busy(Exception):
+    """Gemini's free limit was reached; waiting a minute fixes it."""
+
+
 _no_fast = set()  # models that refused the "answer quickly" setting, so it isn't tried again
 
 
@@ -54,19 +59,40 @@ def _gemini(prompt, as_json=False, fast=False):
         quick = {"thinkingBudget": 0} if "2.5" in model else {"thinkingLevel": "minimal"}
 
     def call(cfg):
-        return requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-            headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"], "Content-Type": "application/json"},
-            json={"contents": [{"parts": [{"text": prompt}]}], **({"generationConfig": cfg} if cfg else {})},
-            timeout=120)
+        r = None
+        for attempt in range(3):   # Gemini's free tier is sometimes busy for a moment; try again
+            r = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"], "Content-Type": "application/json"},
+                json={"contents": [{"parts": [{"text": prompt}]}], **({"generationConfig": cfg} if cfg else {})},
+                timeout=120)
+            if r.status_code not in (429, 500, 502, 503, 504) or attempt == 2:
+                break
+            time.sleep(1.5 * (attempt + 1))
+        return r
+
+    def text_of(r):
+        try:
+            parts = r.json()["candidates"][0]["content"]["parts"]
+        except (KeyError, IndexError, ValueError, TypeError):
+            return ""
+        return "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
 
     r = call({**config, "thinkingConfig": quick} if quick else config)
     if quick and r.status_code == 400:   # this model doesn't take that setting; ask the normal way
         _no_fast.add(model)
         r = call(config)
+    if r.status_code == 429:
+        raise Busy("Gemini's free limit is used up for the moment")
     r.raise_for_status()
-    parts = r.json()["candidates"][0]["content"]["parts"]
-    return "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
+    out = text_of(r)
+    if not out and quick:                # an empty reply with the quick setting: ask the normal way once
+        r = call(config)
+        r.raise_for_status()
+        out = text_of(r)
+    if not out:
+        raise RuntimeError("Gemini sent back an empty answer")
+    return out
 
 
 def _ollama(prompt):
