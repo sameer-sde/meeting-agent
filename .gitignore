@@ -10,3 +10,4 @@ asked.json
 local.db
 .env.vercel
 .vercel
+.env*

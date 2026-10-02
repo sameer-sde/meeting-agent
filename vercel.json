@@ -1,3 +1,20 @@
 {
-  "regions": ["sin1"]
+  "regions": [
+    "sin1"
+  ],
+  "services": {
+    "meeting-agent": {
+      "root": ".",
+      "buildCommand": "pip install -r requirements-web.txt"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": {
+        "type": "service",
+        "service": "meeting-agent"
+      }
+    }
+  ]
 }
