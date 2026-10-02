@@ -20,7 +20,7 @@ from flask import (Flask, abort, flash, g, jsonify, redirect, render_template,  
 from werkzeug.middleware.proxy_fix import ProxyFix  # noqa: E402
 
 from . import tasks, vexa  # noqa: E402
-from .models import Asked, Greeted, Meeting, Session, User, init_db  # noqa: E402
+from .models import Asked, Greeted, Meeting, Session, Task, User, init_db  # noqa: E402
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
@@ -58,6 +58,21 @@ def local_time(dt, fmt="%d %b, %I:%M %p"):
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(TZ).strftime(fmt)
+
+
+@app.context_processor
+def _helpers():
+    return {"times": tasks.meeting_times}
+
+
+def _fill_times(rows):
+    """Older meetings were saved without start/end times; work them out the first time they're shown."""
+    try:
+        if sum(tasks.fill_times(r) for r in rows):
+            Session.commit()
+    except Exception as e:
+        Session.rollback()
+        print("Couldn't work out meeting times:", e)
 
 
 @app.template_filter("platform_name")
@@ -372,11 +387,18 @@ def index():
         bots = _safe(lambda: vexa.running(u.bot_key), [])
         upcoming = _safe(lambda: vexa.upcoming(u.tx_key), [])[:10]
         cals = _safe(lambda: vexa.calendars(u.bot_key), [])
-    reports = (Session.query(Meeting).filter(Meeting.user_id == u.id, Meeting.status.in_(["done", "error"]))
-               .order_by(Meeting.created_at.desc()).limit(50).all())
+    q = request.args.get("q", "").strip()[:100]
+    found = Session.query(Meeting).filter(Meeting.user_id == u.id, Meeting.status.in_(["done", "error"]))
+    if q:
+        # the title, the report card and every spoken line (which includes speaker names)
+        like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        found = found.filter(Meeting.title.ilike(like, escape="\\") | Meeting.report_md.ilike(like, escape="\\")
+                             | Meeting.transcript_json.ilike(like, escape="\\"))
+    reports = found.order_by(Meeting.created_at.desc()).limit(50).all()
+    _fill_times(reports)
     steps, _ = setup_state(u)
     return render_template("dashboard.html", bots=bots, upcoming=upcoming, cals=cals,
-                           reports=reports, api_error=g.api_error, ready=u.ready,
+                           reports=reports, q=q, api_error=g.api_error, ready=u.ready,
                            setup_done=sum(steps.values()), setup_total=len(steps))
 
 
@@ -464,6 +486,7 @@ def _own_meeting(rid):
     m = Session.get(Meeting, rid)
     if not m or m.user_id != g.user.id:
         abort(404)
+    _fill_times([m])
     return m
 
 
@@ -486,8 +509,16 @@ def report(rid):
     segs, people, part_rows, directory = tasks.meeting_people(Session(), g.user, m)
     ments = analytics.mentions(segs, _people_names(segs, people, directory), TZ)
     from .reports import JUNK
+    import json
+    try:
+        chapters = json.loads(m.chapters_json) if m.chapters_json is not None else None
+    except ValueError:
+        chapters = None
+    mine = (g.user.email or "").lower()
+    share_to = [p for p in people if p["email"] and p["email"].lower() != mine]
     return render_template("report.html", m=m, report_html=html, part_rows=part_rows,
-                           mentions=ments, people=people,
+                           mentions=ments, people=people, chapters=chapters, share_to=share_to,
+                           open_tasks=Session.query(Task).filter_by(meeting_id=m.id, done=False).count(),
                            lines=analytics.transcript_rows(segs, TZ, JUNK),
                            timeline=analytics.timeline(segs, TZ))
 
@@ -508,6 +539,114 @@ def transcript_txt(rid):
     body = "\n".join(f"[{r['time']}] {r['speaker']}: {r['text']}" for r in rows)
     return Response(head + body + "\n", mimetype="text/plain; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="transcript-{_safe_name(m)}.txt"'})
+
+
+@app.post("/report/<int:rid>/rename")
+@login_required
+def rename(rid):
+    m = _own_meeting(rid)
+    title = " ".join(request.form.get("title", "").split())[:200]
+    if title:
+        m.title = title
+        Session.commit()
+        flash("Meeting renamed.")
+    return redirect(url_for("report", rid=rid))
+
+
+@app.post("/report/<int:rid>/extras/generate")
+@login_required
+def extras_generate(rid):
+    m = _own_meeting(rid)
+    try:
+        made = tasks.build_extras(Session(), g.user, m)
+        Session.commit()
+        flash(f"Chapters are ready, and {made} task{'s' if made != 1 else ''} added to your Tasks page.")
+    except Exception as e:
+        Session.rollback()
+        flash(f"Couldn't find the chapters and tasks: {e}")
+    return redirect(url_for("report", rid=rid) + "#chapters")
+
+
+@app.post("/report/<int:rid>/ask")
+@login_required
+def ask(rid):
+    from . import analytics, reports
+    m = _own_meeting(rid)
+    question = " ".join(((request.get_json(silent=True) or {}).get("question") or "").split())[:500]
+    if not question:
+        return jsonify(error="Type a question first."), 400
+    lines = reports.clean_lines({"segments": analytics.segments(m)})
+    if not lines:
+        return jsonify(error="This meeting has no transcript to ask about."), 400
+    try:
+        return jsonify(answer=reports.answer(lines, m.title, question))
+    except Exception as e:
+        print("Ask failed:", e)
+        return jsonify(error="Couldn't get an answer just now. Try again in a minute."), 502
+
+
+@app.post("/report/<int:rid>/share")
+@login_required
+def share(rid):
+    m = _own_meeting(rid)
+    typed = request.form.get("extra", "").replace(";", ",").replace("\n", ",").split(",")
+    emails = []
+    for e in request.form.getlist("to") + typed:
+        e = e.strip().lower()
+        if _valid_email(e) and e not in emails:
+            emails.append(e)
+    if not emails:
+        flash("Choose at least one person, or type an email address.")
+    elif len(emails) > 30:
+        flash("That's more than 30 people. Send to fewer people at a time.")
+    else:
+        try:
+            base = os.environ.get("PUBLIC_URL", "").rstrip("/")
+            if tasks.share_report(g.user, m, emails, f"{base}/report/{m.id}" if base else None):
+                flash(f"Report sent to {len(emails)} {'person' if len(emails) == 1 else 'people'}: {', '.join(emails)}")
+            else:
+                flash("Email isn't set up on this server, so the report couldn't be sent.")
+        except Exception as e:
+            flash(f"Couldn't send the report: {e}")
+    return redirect(url_for("report", rid=rid))
+
+
+# ---------- Tasks (action items from every meeting) ----------
+
+@app.route("/tasks")
+@login_required
+def tasks_page():
+    show = request.args.get("show", "open")
+    q = Session.query(Task).filter_by(user_id=g.user.id)
+    counts = {"open": q.filter_by(done=False).count(), "done": q.filter_by(done=True).count()}
+    if show in ("open", "done"):
+        q = q.filter_by(done=(show == "done"))
+    rows = q.order_by(Task.done, Task.created_at.desc(), Task.id).limit(300).all()
+    return render_template("tasks.html", rows=rows, show=show, counts=counts)
+
+
+def _own_task(tid):
+    t = Session.get(Task, tid)
+    if not t or t.user_id != g.user.id:
+        abort(404)
+    return t
+
+
+@app.post("/tasks/<int:tid>/toggle")
+@login_required
+def task_toggle(tid):
+    t = _own_task(tid)
+    t.done = not t.done
+    Session.commit()
+    return redirect(url_for("tasks_page", show=request.form.get("show", "open")))
+
+
+@app.post("/tasks/<int:tid>/delete")
+@login_required
+def task_delete(tid):
+    Session.delete(_own_task(tid))
+    Session.commit()
+    return redirect(url_for("tasks_page", show=request.form.get("show", "open")))
 
 
 # ---------- Recording (audio kept by Vexa) ----------
@@ -767,6 +906,7 @@ def tg_disconnect():
 def delete_account():
     Session.query(Asked).filter_by(user_id=g.user.id).delete()
     Session.query(Greeted).filter_by(user_id=g.user.id).delete()
+    Session.query(Task).filter_by(user_id=g.user.id).delete()
     Session.delete(g.user)
     Session.commit()
     session.clear()

@@ -204,6 +204,22 @@ def title_of(m):
     return t.lstrip(": ").strip() or "Meeting"
 
 
+def _when(v):
+    if not v:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def times_of(m):
+    """When the bot joined and left a finished meeting, as (start, end). Either can be None."""
+    d = m.get("data") or {}
+    return _when(m.get("start_time") or d.get("start_time")), _when(m.get("end_time") or d.get("end_time"))
+
+
 def start_of(m):
     at = (m.get("data") or {}).get("scheduled_at") or m.get("scheduled_at")
     if not at:

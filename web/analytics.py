@@ -164,8 +164,11 @@ def timeline(segs, tz):
             b["sec"] = round(b["start"], 1)
         rows.append({"name": name, "blocks": blocks, "seconds": sum(b["end"] - b["start"] for b in blocks)})
     rows.sort(key=lambda r: r["seconds"], reverse=True)
+    from datetime import timedelta
     return {"rows": rows, "from": clock_label(t0, tz, base), "to": clock_label(t1, tz, base),
-            "minutes": max(round(total / 60), 1)}
+            "minutes": max(round(total / 60), 1),
+            "start_dt": base + timedelta(seconds=t0) if base else None,
+            "end_dt": base + timedelta(seconds=t1) if base else None}
 
 
 def speaker_of(s):

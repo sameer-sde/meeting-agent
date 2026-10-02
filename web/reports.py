@@ -39,12 +39,13 @@ def clean_lines(data):
     return lines
 
 
-def _gemini(prompt):
+def _gemini(prompt, as_json=False):
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
     r = requests.post(
         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
         headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"], "Content-Type": "application/json"},
-        json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=120)
+        json={"contents": [{"parts": [{"text": prompt}]}],
+              **({"generationConfig": {"responseMimeType": "application/json"}} if as_json else {})}, timeout=120)
     r.raise_for_status()
     parts = r.json()["candidates"][0]["content"]["parts"]
     return "".join(p.get("text", "") for p in parts).strip()
@@ -97,7 +98,62 @@ def make_mom(lines, title, date, attendees):
     return _llm(prompt + "\n".join(lines))
 
 
-def _llm(prompt):
+def _llm(prompt, as_json=False):
     if os.environ.get("GEMINI_API_KEY"):
-        return _gemini(prompt)
+        return _gemini(prompt, as_json)
     return _ollama(prompt)
+
+
+EXTRAS_PROMPT = """Below is a meeting transcript. Every line starts with its line number in square brackets.
+Speakers may use English, Hindi, Telugu or a mix. Write everything in clear English.
+
+Reply with JSON only, in exactly this shape:
+{"chapters": [{"title": "short topic name", "line": 0, "summary": "one sentence on what was discussed"}],
+ "tasks": [{"task": "what has to be done", "owner": "person's name", "due": "deadline as it was said"}]}
+
+chapters: split the meeting into its main topics, in order. "line" is the number of the line where
+that topic starts. Use 1 chapter for a very short meeting and at most 10 for a long one.
+tasks: every action item someone agreed to or was asked to do. Use "" for owner or due when it
+was not said. Use an empty list when there are none.
+Only use what was actually said. Do not invent names, dates or tasks.
+
+TRANSCRIPT:
+"""
+
+
+def _json_from(text):
+    """The JSON object inside a model's reply, even when it is wrapped in ``` or extra words."""
+    import json
+    a, b = text.find("{"), text.rfind("}")
+    if a == -1 or b <= a:
+        return {}
+    try:
+        data = json.loads(text[a:b + 1])
+        return data if isinstance(data, dict) else {}
+    except ValueError:
+        return {}
+
+
+def make_extras(numbered_lines):
+    """Chapters and action items as plain data: {"chapters": [...], "tasks": [...]}."""
+    data = _json_from(_llm(EXTRAS_PROMPT + "\n".join(numbered_lines), as_json=True))
+    return {"chapters": [c for c in data.get("chapters") or [] if isinstance(c, dict)],
+            "tasks": [t for t in data.get("tasks") or [] if isinstance(t, dict)]}
+
+
+ASK_PROMPT = """You answer questions about one meeting, using only its transcript below.
+Speakers may use English, Hindi, Telugu or a mix. Answer in clear, simple English, in a few
+sentences or a short list. Name who said what when it helps. If the transcript does not contain
+the answer, say "That wasn't discussed in this meeting." Do not guess.
+
+Meeting title: {title}
+
+TRANSCRIPT:
+{transcript}
+
+QUESTION: {question}
+"""
+
+
+def answer(lines, title, question):
+    return _llm(ASK_PROMPT.format(title=title, transcript="\n".join(lines), question=question))

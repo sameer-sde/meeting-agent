@@ -1,0 +1,51 @@
+{% extends "shell.html" %}
+{% block title %}Tasks · Meeting Agent{% endblock %}
+{% block css %}
+.wrap{max-width:900px;margin:0 auto;padding:36px 20px 72px}
+.wrap h1{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:40px;margin:0 0 6px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:22px 0 0}
+.tabs a{padding:10px 14px;color:var(--muted);text-decoration:none;border-bottom:2px solid transparent}
+.tabs a.on{color:var(--ink);border-bottom-color:var(--accent)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:8px 22px;margin-top:20px}
+.task{display:grid;grid-template-columns:28px 1fr auto;gap:14px;align-items:start;padding:16px 0;border-bottom:1px solid var(--line)}
+.task:last-child{border-bottom:0}
+.tick{width:22px;height:22px;border-radius:7px;border:1.5px solid var(--muted);background:none;cursor:pointer;color:#1B1A17;font:700 14px Manrope,sans-serif;line-height:1;padding:0;margin-top:1px}
+.tick.done{background:var(--live);border-color:var(--live)}
+.task.isdone .what{color:var(--muted);text-decoration:line-through}
+.info{display:flex;gap:8px 14px;flex-wrap:wrap;margin-top:6px;font-size:13px;color:var(--muted)}
+.info b{color:var(--ink);font-weight:600}
+.info a{color:var(--muted)}
+.link{background:none;border:0;color:var(--muted);font:600 13px Manrope,sans-serif;cursor:pointer;padding:2px 4px}
+.link:hover{color:var(--stop)}
+.none{color:var(--muted);padding:18px 0;margin:0}
+{% endblock %}
+{% block page %}
+<div class="wrap">
+  <h1>Tasks</h1>
+  <p class="hint">Every action item from your meetings, in one place: who owes what, and by when. New meetings add their tasks here on their own. For an older meeting, open its report card and press "Find chapters and tasks".</p>
+  <nav class="tabs" aria-label="Which tasks to show">
+    <a class="{{ 'on' if show == 'open' }}" href="{{ url_for('tasks_page', show='open') }}">Open · {{ counts.open }}</a>
+    <a class="{{ 'on' if show == 'done' }}" href="{{ url_for('tasks_page', show='done') }}">Done · {{ counts.done }}</a>
+    <a class="{{ 'on' if show == 'all' }}" href="{{ url_for('tasks_page', show='all') }}">All</a>
+  </nav>
+  <div class="card">
+    {% for t in rows %}
+    <div class="task {{ 'isdone' if t.done }}">
+      <form method="post" action="{{ url_for('task_toggle', tid=t.id) }}"><input type="hidden" name="show" value="{{ show }}">
+        <button class="tick {{ 'done' if t.done }}" aria-label="{{ 'Mark as not done' if t.done else 'Mark as done' }}: {{ t.text }}">{{ '✓' if t.done }}</button></form>
+      <div>
+        <div class="what">{{ t.text }}</div>
+        <div class="info">
+          <span>Owner <b>{{ t.owner or 'Not set' }}</b></span>
+          <span>Due <b>{{ t.due or 'Not set' }}</b></span>
+          <a href="{{ url_for('report', rid=t.meeting_id) }}">{{ t.meeting.title }} · {{ t.meeting.created_at|local('%d %b') }}</a>
+        </div>
+      </div>
+      <form method="post" action="{{ url_for('task_delete', tid=t.id) }}"><input type="hidden" name="show" value="{{ show }}"><button class="link">Remove</button></form>
+    </div>
+    {% else %}
+    <p class="none">{% if show == 'done' %}Nothing ticked off yet.{% elif show == 'open' and counts.done %}All done. Nothing is open.{% else %}No tasks yet. They appear here after your next meeting.{% endif %}</p>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

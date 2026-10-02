@@ -26,6 +26,8 @@
 .cal form{display:inline}
 .link{background:none;border:0;color:var(--ink);font:600 13px Manrope,sans-serif;cursor:pointer;padding:4px 6px;text-decoration:underline;text-underline-offset:3px}
 .link.red{color:var(--stop)}
+.search{display:flex;gap:8px;align-items:center;margin:0 0 12px}
+.search input{flex:1}
 .section-title{display:flex;align-items:baseline;justify-content:space-between;margin:0 0 12px}
 .list{list-style:none;margin:0 0 40px;padding:0;background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden}
 .list li+li{border-top:1px solid var(--line)}
@@ -107,15 +109,21 @@ a.row:hover{background:var(--panel2)}
     {% endfor %}</ul>
     {% else %}<p class="empty">Nothing scheduled. Add a meeting on the left, or connect a calendar.</p>{% endif %}
 
-    <div class="section-title"><h2>Report cards</h2><span class="hint">{{ reports|length }} total</span></div>
+    <div class="section-title"><h2>Report cards</h2><span class="hint">{{ reports|length }} {{ 'found' if q else 'total' }}</span></div>
+    <form class="search" method="get" action="{{ url_for('index') }}" role="search">
+      <input type="text" name="q" value="{{ q }}" placeholder="Search by title, person or anything that was said" aria-label="Search report cards">
+      <button class="btn ghost">Search</button>
+      {% if q %}<a class="link" href="{{ url_for('index') }}">Clear</a>{% endif %}
+    </form>
     {% if reports %}
     <ul class="list">{% for r in reports %}
       <li><a class="row" href="{{ url_for('report', rid=r.id) }}">
         <span class="day"><b>{{ r.created_at|local('%d') }}</b><span>{{ r.created_at|local('%b') }}</span></span>
         <span>{{ r.title }}</span>
-        {% if r.status == 'error' %}<span class="tag error">failed</span>{% else %}<span class="mono">{{ r.created_at|local('%I:%M %p') }}</span>{% endif %}
+        {% if r.status == 'error' %}<span class="tag error">failed</span>{% else %}{% set t = times(r) %}<span class="mono">{{ t.clock or r.created_at|local('%I:%M %p') }}{% if t.duration %} · {{ t.duration }}{% endif %}</span>{% endif %}
       </a></li>
     {% endfor %}</ul>
+    {% elif q %}<p class="empty">No report card matches "{{ q }}".</p>
     {% else %}<p class="empty">Report cards show up here a few minutes after a meeting ends.</p>{% endif %}
   </main>
 </div>

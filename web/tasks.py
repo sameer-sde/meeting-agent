@@ -8,12 +8,12 @@ import json
 import os
 import threading
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 
 from . import mailer, reports, vexa
-from .models import KV, Asked, Greeted, Meeting, Session, User
+from .models import KV, Asked, Greeted, Meeting, Session, Task, User
 
 _lock = threading.Lock()
 
@@ -155,6 +155,51 @@ def build_mom(db, user, meeting, lines=None):
     return reports.make_mom(lines, meeting.title, when, attendees)
 
 
+def build_extras(db, user, meeting):
+    """Split a meeting into chapters and pick out its action items (one AI call). Needs meeting.id."""
+    from . import analytics
+    rows = analytics.transcript_rows(analytics.segments(meeting), _user_tz(), reports.JUNK)
+    if not rows:
+        meeting.chapters_json = "[]"
+        return 0
+    data = reports.make_extras([f"[{i}] {r['speaker']}: {r['text']}" for i, r in enumerate(rows)])
+    chapters, last = [], -1
+    for c in data["chapters"][:12]:
+        try:
+            i = min(max(int(c.get("line", 0)), 0), len(rows) - 1)
+        except (TypeError, ValueError):
+            continue
+        title = str(c.get("title") or "").strip()
+        if not title or i <= last:
+            continue
+        last = i
+        chapters.append({"title": title[:120], "summary": str(c.get("summary") or "").strip()[:400],
+                         "sec": rows[i]["sec"], "time": rows[i]["time"]})
+    meeting.chapters_json = json.dumps(chapters, ensure_ascii=False)
+    db.query(Task).filter_by(meeting_id=meeting.id, done=False).delete()
+    kept = {t.text.lower() for t in db.query(Task).filter_by(meeting_id=meeting.id)}
+    made = 0
+    for t in data["tasks"][:40]:
+        text = str(t.get("task") or "").strip()
+        if not text or text.lower() in kept:
+            continue
+        kept.add(text.lower())
+        db.add(Task(user_id=user.id, meeting_id=meeting.id, text=text[:500],
+                    owner=str(t.get("owner") or "").strip()[:120], due=str(t.get("due") or "").strip()[:120]))
+        made += 1
+    return made
+
+
+def share_report(user, row, emails, link):
+    """Email a meeting's report card to other people (the Share button)."""
+    facts = _meeting_facts(row)
+    tail = f" ({facts})" if facts else ""
+    return mailer.send_report(emails, f"Meeting notes: {row.title}", row.report_md, None, None,
+                              hello="Hi,",
+                              intro=f"{user.name or user.first_name} shared the notes from the meeting "
+                                    f"\"{row.title}\"{tail}. These notes were taken by {user.agent_name}.")
+
+
 def process_finished(db, user):
     done_ids = {v for (v,) in db.query(Meeting.vexa_id).filter(Meeting.user_id == user.id)}
     finished = vexa.meetings(user.tx_key, "completed", 50)
@@ -178,6 +223,7 @@ def process_finished(db, user):
             lines = reports.clean_lines(data)
             row.participants_json = json.dumps(
                 vexa.participants(user.tx_key, row.platform, row.native_id), ensure_ascii=False)
+            fill_times(row, *vexa.times_of(m))
             if not lines:
                 row.status = "empty"
             else:
@@ -194,6 +240,10 @@ def process_finished(db, user):
         db.add(row)
         db.flush()
         if row.status == "done":
+            try:
+                build_extras(db, user, row)
+            except Exception:
+                traceback.print_exc()  # chapters and tasks can be made later from the report page
             base = os.environ.get("PUBLIC_URL", "").rstrip("/")
             link = f"{base}/report/{row.id}" if base else None
             try:
@@ -204,23 +254,71 @@ def process_finished(db, user):
     return made
 
 
+def _aware(dt):
+    return dt.replace(tzinfo=timezone.utc) if dt and dt.tzinfo is None else dt
+
+
+def fill_times(row, start=None, end=None):
+    """Work out when a meeting started and ended, and for how long. Done once per meeting.
+
+    start/end: when the bot joined and left (from Vexa). Without them, the first and last
+    spoken line are used. Returns True when something was filled in.
+    """
+    if row.duration_min is not None:
+        return False
+    from . import analytics
+    tl = analytics.timeline(analytics.segments(row), _user_tz())
+    start, end = _aware(start), _aware(end)
+    if not (start and end and timedelta(0) < end - start < timedelta(hours=24)):
+        start, end = (tl["start_dt"], tl["end_dt"]) if tl else (None, None)
+    row.started_at, row.ended_at = start, end
+    if start and end:
+        row.duration_min = max(round((end - start).total_seconds() / 60), 1)
+    else:
+        row.duration_min = tl["minutes"] if tl else 0
+    return True
+
+
+def _span(mins):
+    return f"{mins} min" if mins < 60 else f"{mins // 60} h {mins % 60:02d} min"
+
+
+def meeting_times(row):
+    """Ready-to-show start, end and duration, e.g. {"start": "2 Oct, 7:30 PM", "end": "7:58 PM",
+    "duration": "28 min"}. A value is "" when it isn't known."""
+    out = {"start": "", "end": "", "duration": "", "clock": ""}
+    try:
+        tz = _user_tz()
+        a, b = _aware(row.started_at), _aware(row.ended_at)
+
+        def clock(t):
+            return t.strftime("%I:%M %p").lstrip("0")
+        if a:
+            a = a.astimezone(tz)
+            out["clock"] = clock(a)
+            out["start"] = f"{a.day} {a.strftime('%b')}, {clock(a)}"
+        if b:
+            b = b.astimezone(tz)
+            out["end"] = clock(b) if a and a.date() == b.date() else f"{b.day} {b.strftime('%b')}, {clock(b)}"
+        if row.duration_min:
+            out["duration"] = _span(row.duration_min)
+    except Exception:
+        traceback.print_exc()
+    return out
+
+
 def _meeting_facts(row):
-    """A short line like "2 Oct, 7:26 AM · 4 min · 5 people". Never raises."""
+    """A short line like "2 Oct, 7:26 AM to 7:30 AM · 4 min · 5 people". Never raises."""
     try:
         from . import analytics
         segs = analytics.segments(row)
+        fill_times(row)
+        t = meeting_times(row)
         bits = []
-        base = analytics.clock_base(segs)
-        start = base or row.created_at
-        if start:
-            if start.tzinfo is None:
-                start = start.replace(tzinfo=timezone.utc)
-            t = start.astimezone(_user_tz())
-            bits.append(f"{t.day} {t.strftime('%b')}, {t.strftime('%I:%M %p').lstrip('0')}")
-        tl = analytics.timeline(segs, _user_tz())
-        mins = tl["minutes"] if tl else 0
-        if mins:
-            bits.append(f"{mins} min")
+        if t["start"]:
+            bits.append(t["start"] + (f" to {t['end']}" if t["end"] else ""))
+        if t["duration"]:
+            bits.append(t["duration"])
         people = len({analytics.speaker_of(s) for s in segs} - {"Unknown speaker"})
         if people:
             bits.append(f"{people} {'person' if people == 1 else 'people'}")

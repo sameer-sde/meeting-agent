@@ -70,6 +70,10 @@ td{padding:8px 10px;border:1px solid var(--line);vertical-align:top}
     <div><dt>Date</dt><dd>{{ m.created_at|local('%d %B %Y') }}</dd></div>
     <div><dt>Platform</dt><dd>{{ m.platform|platform_name or 'Not recorded' }}</dd></div>
     <div><dt>Attended</dt><dd>{{ people|selectattr('status', 'equalto', 'Attended (spoke)')|list|length }} of {{ people|length }}</dd></div>
+    {% set t = times(m) %}{% if t.start or t.duration %}
+    <div><dt>Started</dt><dd>{{ t.start or 'Not recorded' }}</dd></div>
+    <div><dt>Ended</dt><dd>{{ t.end or 'Not recorded' }}</dd></div>
+    <div><dt>Duration</dt><dd>{{ t.duration or 'Not recorded' }}</dd></div>{% endif %}
   </dl>
 
   <h2 class="sec">Attendees</h2>

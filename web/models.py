@@ -148,10 +148,30 @@ class Meeting(Base):
     transcript_json: Mapped[str] = mapped_column(Text, default="")
     mom_md: Mapped[str] = mapped_column(Text, default="")
     participants_json: Mapped[str] = mapped_column(Text, default="")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_min: Mapped[int | None] = mapped_column(Integer, nullable=True)  # None = not worked out yet
+    chapters_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # None = not looked for yet
     recording_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # where the audio is, once found
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
     user = relationship("User", back_populates="meetings")
+    tasks = relationship("Task", back_populates="meeting", cascade="all, delete-orphan")
+
+
+class Task(Base):
+    """An action item picked out of a meeting, shown on the Tasks page."""
+    __tablename__ = "tasks"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    meeting_id: Mapped[int] = mapped_column(ForeignKey("meetings.id"))
+    text: Mapped[str] = mapped_column(Text, default="")
+    owner: Mapped[str] = mapped_column(String(255), default="")
+    due: Mapped[str] = mapped_column(String(120), default="")
+    done: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+    meeting = relationship("Meeting", back_populates="tasks")
 
 
 class Person(Base):
