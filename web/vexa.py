@@ -43,6 +43,16 @@ def send_bot(bot_key, link, task="translate", bot_name="Meeting Agent"):
     return d["platform"], d["native_meeting_id"]
 
 
+def chat(bot_key, platform, native_id, text):
+    """Post a message in the meeting chat as the bot. True when Vexa accepted it."""
+    try:
+        r = requests.post(f"{BASE}/bots/{platform}/{native_id}/chat", headers=_h(bot_key),
+                          timeout=TIMEOUT, json={"text": text})
+        return r.ok
+    except requests.RequestException:
+        return False
+
+
 def running(bot_key):
     r = requests.get(f"{BASE}/bots/status", headers=_h(bot_key), timeout=TIMEOUT)
     if not r.ok:
@@ -83,10 +93,14 @@ def participants(tx_key, platform, native_id):
         return []
 
 
-def schedule(tx_key, title, link, when_utc):
-    r = requests.post(f"{BASE}/meetings", headers=_h(tx_key), timeout=TIMEOUT, json={
-        "title": title or "Meeting", "scheduled_at": when_utc.isoformat(),
-        "meeting_url": link, "auto_join": True})
+def schedule(tx_key, title, link, when_utc, bot_name=None):
+    body = {"title": title or "Meeting", "scheduled_at": when_utc.isoformat(),
+            "meeting_url": link, "auto_join": True}
+    r = None
+    if bot_name:  # not every Vexa version accepts a name here; fall back to the plain request
+        r = requests.post(f"{BASE}/meetings", headers=_h(tx_key), timeout=TIMEOUT, json={**body, "bot_name": bot_name})
+    if r is None or r.status_code in (400, 422):
+        r = requests.post(f"{BASE}/meetings", headers=_h(tx_key), timeout=TIMEOUT, json=body)
     if not r.ok:
         raise _err(r)
 
@@ -104,9 +118,9 @@ def calendars(bot_key):
     return _rows(r.json(), "calendars", "items")
 
 
-def cal_connect(bot_key, name, ics_url):
+def cal_connect(bot_key, name, ics_url, bot_name="Meeting Agent"):
     r = requests.post(f"{BASE}/user/calendars", headers=_h(bot_key), timeout=TIMEOUT, json={
-        "name": name, "ics_url": ics_url, "auto_join": True, "bot_name": "Meeting Agent"})
+        "name": name, "ics_url": ics_url, "auto_join": True, "bot_name": bot_name})
     if not r.ok:
         raise _err(r)
 

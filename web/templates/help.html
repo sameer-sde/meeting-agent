@@ -22,7 +22,7 @@ h2.group{margin:30px 0 12px;color:var(--accent)}
 
   <h2 class="group">Using it</h2>
   <details open><summary>How does it work?</summary>
-    <p>You give the bot a meeting link (or connect your calendar). It joins the call as a participant called <b>Meeting Agent</b>, listens to everyone, and when the meeting ends it writes a report card: a summary, decisions, action items with owners, and who said what. You get it on the dashboard and by email.</p></details>
+    <p>You give the bot a meeting link (or connect your calendar). It joins the call as a participant named after you (yours is <b>{{ g.user.agent_name }}</b>; change it in Settings), says hello in the meeting chat, listens to everyone, and when the meeting ends it writes a report card: a summary, decisions, action items with owners, and who said what. You get it on the dashboard and by email.</p></details>
   <details><summary>The bot is waiting in the lobby</summary>
     <p>Teams and Google Meet treat the bot as a guest, so someone in the meeting has to click <b>Admit</b>. If it never appears, your company may block guests in Teams; ask your Teams admin to allow guest access for meetings.</p></details>
   <details><summary>Which languages does it understand?</summary>

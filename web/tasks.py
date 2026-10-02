@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 import requests
 
 from . import mailer, reports, vexa
-from .models import KV, Asked, Meeting, Session, User
+from .models import KV, Asked, Greeted, Meeting, Session, User
 
 _lock = threading.Lock()
 
@@ -197,19 +197,88 @@ def process_finished(db, user):
             base = os.environ.get("PUBLIC_URL", "").rstrip("/")
             link = f"{base}/report/{row.id}" if base else None
             try:
-                mailer.send_report(user.recipients, f"Meeting Report Card - {row.title}",
-                                   row.report_md, row.transcript_json, link)
+                email_report(user, row, link)
             except Exception:
                 traceback.print_exc()
         made += 1
     return made
 
 
+def _meeting_facts(row):
+    """A short line like "2 Oct, 7:26 AM · 4 min · 5 people". Never raises."""
+    try:
+        from . import analytics
+        segs = analytics.segments(row)
+        bits = []
+        base = analytics.clock_base(segs)
+        start = base or row.created_at
+        if start:
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=timezone.utc)
+            t = start.astimezone(_user_tz())
+            bits.append(f"{t.day} {t.strftime('%b')}, {t.strftime('%I:%M %p').lstrip('0')}")
+        ends = [float(s.get("end") or s.get("end_time") or 0) for s in segs]
+        mins = round(max(ends) / 60) if ends and max(ends) > 0 else 0
+        if mins:
+            bits.append(f"{mins} min")
+        people = len({analytics.speaker_of(s) for s in segs} - {"Unknown speaker"})
+        if people:
+            bits.append(f"{people} {'person' if people == 1 else 'people'}")
+        return " · ".join(bits)
+    except Exception:
+        return ""
+
+
+def email_report(user, row, link):
+    """The owner gets "Hi <name>"; teammates on the list get a plain "Hi"."""
+    facts = _meeting_facts(row)
+    tail = f" ({facts})" if facts else ""
+    owner = (user.email or "").lower()
+    mine = [e for e in user.recipients if e.lower() == owner]
+    others = [e for e in user.recipients if e.lower() != owner]
+    if mine:
+        mailer.send_report(mine, f"{user.first_name}, your report card is ready: {row.title}",
+                           row.report_md, row.transcript_json, link,
+                           hello=f"Hi {user.first_name},",
+                           intro=f"Here's what happened in your meeting \"{row.title}\" today{tail}.")
+    if others:
+        mailer.send_report(others, f"Meeting report card: {row.title}",
+                           row.report_md, row.transcript_json, link,
+                           hello="Hi,",
+                           intro=f"Here's what happened in the meeting \"{row.title}\" today{tail}. "
+                                 f"These notes were taken by {user.agent_name}.")
+
+
+def greet_meetings(db, user):
+    """Once the bot is inside a meeting, say hello in the chat (one time per meeting)."""
+    if not user.greets:
+        return 0
+    sent = 0
+    for b in vexa.running(user.bot_key):
+        if (b.get("status") or "").lower() != "active":
+            continue
+        platform, native = b.get("platform"), b.get("native_meeting_id")
+        if not platform or not native:
+            continue
+        mid = b.get("meeting_id") or b.get("id")
+        key = f"{platform}:{native}:{mid or datetime.now(timezone.utc).date().isoformat()}"[:400]
+        if db.query(Greeted).filter_by(user_id=user.id, key=key).first():
+            continue
+        absent = False
+        if isinstance(mid, int):
+            asked = db.query(Asked).filter_by(user_id=user.id, vexa_id=mid).first()
+            absent = bool(asked and asked.answer == "no")
+        if vexa.chat(user.bot_key, platform, native, user.greeting(absent)):
+            db.add(Greeted(user_id=user.id, key=key))
+            sent += 1
+    return sent
+
+
 def tick():
     """One pass over every user. Safe to call often; overlapping calls are skipped."""
     if not _lock.acquire(blocking=False):
         return {"skipped": True}
-    stats = {"users": 0, "reports": 0, "asked": 0, "telegram": 0, "errors": 0}
+    stats = {"users": 0, "reports": 0, "asked": 0, "greeted": 0, "telegram": 0, "errors": 0}
     db = Session()
     try:
         stats["telegram"] = handle_telegram(db)
@@ -218,6 +287,12 @@ def tick():
             if not user.ready:
                 continue
             stats["users"] += 1
+            try:
+                stats["greeted"] += greet_meetings(db, user)
+                db.commit()
+            except Exception:
+                db.rollback()
+                traceback.print_exc()
             try:
                 stats["reports"] += process_finished(db, user)
                 stats["asked"] += ask_attendance(db, user)

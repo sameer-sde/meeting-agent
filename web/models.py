@@ -73,6 +73,9 @@ class User(Base):
     tg_token: Mapped[str] = mapped_column(String(64), unique=True, default=lambda: secrets.token_urlsafe(12))
     ask_minutes: Mapped[int] = mapped_column(Integer, default=5)
     baseline_done: Mapped[bool] = mapped_column(Boolean, default=False)
+    bot_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    greet_on: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=True)
+    greet_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
     meetings = relationship("Meeting", back_populates="user", cascade="all, delete-orphan")
@@ -93,6 +96,32 @@ class User(Base):
     @tx_key.setter
     def tx_key(self, v):
         self.tx_key_enc = encrypt(v)
+
+    @property
+    def first_name(self):
+        raw = (self.name or "").strip() or (self.email or "").split("@")[0]
+        first = raw.replace(".", " ").replace("_", " ").split()[0] if raw.strip() else "Your"
+        return first[:1].upper() + first[1:]
+
+    @property
+    def agent_name(self):
+        """What the bot is called inside the meeting, e.g. "Sameer's Notetaker"."""
+        return (self.bot_name or "").strip() or f"{self.first_name}'s Notetaker"
+
+    @property
+    def greets(self):
+        return self.greet_on is not False
+
+    def greeting(self, absent=False):
+        """The message the bot posts in the meeting chat after it is let in."""
+        custom = (self.greet_text or "").strip()
+        if custom:
+            return custom
+        if absent:
+            return (f"Hi everyone, I'm {self.agent_name}. {self.first_name} couldn't join this meeting, "
+                    f"so I'm taking notes on {self.first_name}'s behalf. I only listen, and I'll send a summary afterwards.")
+        return (f"Hi everyone, I'm {self.agent_name}. I'm here to take notes for {self.first_name}. "
+                f"I only listen, and I'll send a summary after the meeting.")
 
     @property
     def ready(self):
@@ -142,6 +171,16 @@ class Asked(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     vexa_id: Mapped[int] = mapped_column(Integer)
     answer: Mapped[str | None] = mapped_column(String(8), nullable=True)
+
+
+class Greeted(Base):
+    """Meetings where the bot has already posted its hello in the chat."""
+    __tablename__ = "greeted"
+    __table_args__ = (UniqueConstraint("user_id", "key"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    key: Mapped[str] = mapped_column(String(400))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class KV(Base):

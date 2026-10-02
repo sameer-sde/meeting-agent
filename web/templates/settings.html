@@ -6,6 +6,10 @@
 .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;margin-top:22px}
 .steps{margin:8px 0 0;padding-left:20px;color:var(--muted);font-size:14px}
 .steps li{margin:4px 0}
+.check{display:flex;align-items:center;gap:10px;margin:16px 0 4px;font-size:15px;cursor:pointer}
+.check input{width:18px;height:18px;accent-color:var(--accent);flex:none}
+textarea{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--ink);font:14px Manrope,sans-serif;padding:11px 13px;resize:vertical}
+textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .saved{color:var(--live);font-size:13px;margin-left:6px}
 .row2{display:grid;grid-template-columns:1fr 120px;gap:12px}
 .ok{display:inline-flex;align-items:center;gap:8px;color:var(--live)}
@@ -39,6 +43,17 @@
         <div><label class="f" for="to">Send reports to</label><input id="to" type="text" name="report_to" value="{{ g.user.report_to }}"></div>
         <div><label class="f" for="ask">Ask before (min)</label><input id="ask" type="number" min="2" max="30" name="ask_minutes" value="{{ g.user.ask_minutes }}"></div>
       </div>
+    </div>
+    <div class="card">
+      <h2>Your bot in the meeting</h2>
+      <p class="hint">This is the name people see when the bot asks to join, and the hello it posts in the meeting chat once it is let in.</p>
+      <input type="hidden" name="bot_form" value="1">
+      <label class="f" for="bn">Bot name</label>
+      <input id="bn" type="text" name="bot_name" maxlength="60" value="{{ g.user.bot_name or '' }}" placeholder="{{ g.user.first_name }}'s Notetaker">
+      <label class="check"><input type="checkbox" name="greet_on" value="1" {{ 'checked' if g.user.greets }}> Say hello in the meeting chat after joining</label>
+      <label class="f" for="gt">Hello message</label>
+      <textarea id="gt" name="greet_text" rows="3" maxlength="500" placeholder="{{ g.user.greeting() }}">{{ g.user.greet_text or '' }}</textarea>
+      <p class="hint" style="margin-top:8px">Leave the name and message blank to use the ones shown in grey. If you tell Telegram you're not joining, the bot says you couldn't join. A calendar you connected earlier keeps its old bot name until you disconnect and connect it again.</p>
     </div>
     <button class="btn accent" style="margin-top:18px">Save settings</button>
   </form>

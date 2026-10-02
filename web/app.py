@@ -20,7 +20,7 @@ from flask import (Flask, abort, flash, g, jsonify, redirect, render_template,  
 from werkzeug.middleware.proxy_fix import ProxyFix  # noqa: E402
 
 from . import tasks, vexa  # noqa: E402
-from .models import Asked, Meeting, Session, User, init_db  # noqa: E402
+from .models import Asked, Greeted, Meeting, Session, User, init_db  # noqa: E402
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
@@ -385,8 +385,9 @@ def index():
 @needs_keys
 def send():
     try:
-        _, mid = vexa.send_bot(g.user.bot_key, request.form["link"].strip(), request.form.get("mode", "translate"))
-        flash(f"Bot sent to {mid}. Admit 'Meeting Agent' when it asks to join.")
+        _, mid = vexa.send_bot(g.user.bot_key, request.form["link"].strip(), request.form.get("mode", "translate"),
+                               g.user.agent_name)
+        flash(f"Bot sent to {mid}. Admit '{g.user.agent_name}' when it asks to join.")
     except Exception as e:
         flash(f"Couldn't send the bot: {e}")
     return redirect(url_for("index"))
@@ -411,7 +412,7 @@ def schedule():
     try:
         local = datetime.strptime(request.form["when"], "%Y-%m-%dT%H:%M").replace(tzinfo=TZ)
         vexa.schedule(g.user.tx_key, request.form.get("title", "").strip(), request.form["link"].strip(),
-                      local.astimezone(timezone.utc))
+                      local.astimezone(timezone.utc), g.user.agent_name)
         flash("Scheduled. The bot joins about a minute before the start.")
     except Exception as e:
         flash(f"Couldn't schedule the meeting: {e}")
@@ -423,7 +424,8 @@ def schedule():
 @needs_keys
 def cal_connect():
     try:
-        vexa.cal_connect(g.user.bot_key, request.form["name"].strip(), request.form["ics_url"].strip())
+        vexa.cal_connect(g.user.bot_key, request.form["name"].strip(), request.form["ics_url"].strip(),
+                         g.user.agent_name)
         flash("Calendar connected. Meetings with a link will be joined automatically.")
     except Exception as e:
         flash(f"Couldn't connect the calendar: {e}")
@@ -607,6 +609,10 @@ def settings():
             u.tx_key = tx
         if "report_to" in request.form:
             u.report_to = request.form["report_to"].strip()
+        if request.form.get("bot_form"):
+            u.bot_name = request.form.get("bot_name", "").strip()[:60] or None
+            u.greet_on = bool(request.form.get("greet_on"))
+            u.greet_text = request.form.get("greet_text", "").strip()[:500] or None
         try:
             if "ask_minutes" in request.form:
                 u.ask_minutes = max(2, min(30, int(request.form["ask_minutes"])))
@@ -651,6 +657,7 @@ def tg_disconnect():
 @login_required
 def delete_account():
     Session.query(Asked).filter_by(user_id=g.user.id).delete()
+    Session.query(Greeted).filter_by(user_id=g.user.id).delete()
     Session.delete(g.user)
     Session.commit()
     session.clear()

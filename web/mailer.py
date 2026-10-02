@@ -82,11 +82,19 @@ def _smtp_send(msg):
             s.send_message(msg)
 
 
-def send_report(to, subject, report_md, transcript_json=None, link=None):
+def send_report(to, subject, report_md, transcript_json=None, link=None, hello=None, intro=None):
+    """hello: "Hi Sameer,"   intro: one plain sentence about the meeting, shown above the report."""
     if not configured() or not to:
         return False
+    import html as _html
     body = markdown.markdown(report_md, extensions=["nl2br", "sane_lists"])
     body = body.replace("<h2>", '<h2 style="color:#E08A5A;font-weight:normal;font-size:20px;margin:22px 0 6px">')
+    if hello:
+        top = f'<p style="font-size:22px;margin:0 0 6px">{_html.escape(hello)}</p>'
+        if intro:
+            top += f'<p style="margin:0 0 8px;color:#C9C4BA">{_html.escape(intro)}</p>'
+        body = top + body
+        report_md = hello + "\n" + (intro + "\n\n" if intro else "\n") + report_md
     footer = f'<a style="color:#ECE8E1" href="{link}">Open in Meeting Agent</a>' if link else "Sent by Meeting Agent"
     html = TEMPLATE.format(subject=subject, body=body, footer=footer)
     if os.environ.get("BREVO_API_KEY"):
