@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOM - {{ m.title }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1C1B18;--muted:#6B6760;--line:#E2DED6;--accent:#B5562A;--paper:#FFFFFF;--bg:#ECE8E1}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 Manrope,system-ui,sans-serif}
+.bar{position:sticky;top:0;z-index:2;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:12px 20px;background:#1B1A17;color:#ECE8E1}
+.bar a,.bar button{font:600 14px Manrope,sans-serif;border:1px solid #35332E;border-radius:10px;padding:9px 14px;background:transparent;color:#ECE8E1;text-decoration:none;cursor:pointer}
+.bar .primary{background:#E08A5A;border-color:#E08A5A;color:#1B1A17}
+.bar .group{display:flex;gap:8px;flex-wrap:wrap}
+.flash{max-width:820px;margin:16px auto 0;padding:10px 14px;border-radius:10px;background:#E3F1E8;color:#1F5A36}
+.page{max-width:820px;margin:24px auto 48px;background:var(--paper);padding:56px 64px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;border-bottom:2px solid var(--ink);padding-bottom:18px}
+.head h1{font-family:Newsreader,Georgia,serif;font-weight:500;font-size:34px;line-height:1.15;margin:0}
+.head .kicker{font-size:13px;color:var(--accent);font-weight:600;margin-bottom:6px}
+.brand{font-family:Newsreader,Georgia,serif;font-size:16px;white-space:nowrap}
+.brand i{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-left:4px;vertical-align:middle}
+dl.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:12px 24px;margin:20px 0 8px}
+dl.facts dt{font-size:12px;color:var(--muted)}
+dl.facts dd{margin:2px 0 0;font-weight:600}
+h2.sec{font-family:Newsreader,Georgia,serif;font-weight:500;font-size:22px;margin:30px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.mom h2{font-family:Newsreader,Georgia,serif;font-weight:500;font-size:22px;margin:30px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.mom h3{font-size:16px;margin:18px 0 6px}
+.mom ul,.mom ol{padding-left:22px}
+.mom li{margin:4px 0}
+table{width:100%;border-collapse:collapse;font-size:14px;margin:8px 0}
+th{text-align:left;background:#F5F2EC;font-weight:600;padding:8px 10px;border:1px solid var(--line)}
+td{padding:8px 10px;border:1px solid var(--line);vertical-align:top}
+.ok{color:#1F7A45;font-weight:600}
+.dim{color:var(--muted)}
+.foot{margin-top:40px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:12px}
+.missing{text-align:center;padding:32px 0;color:var(--muted)}
+.missing form{margin-top:14px}
+.missing button{font:600 14px Manrope,sans-serif;border:0;border-radius:10px;padding:11px 18px;background:var(--accent);color:#fff;cursor:pointer}
+@media(max-width:700px){.page{padding:28px 20px;margin:0}dl.facts{grid-template-columns:1fr 1fr}.head{flex-direction:column}}
+@media print{
+  @page{size:A4;margin:16mm}
+  body{background:#fff}
+  .bar,.flash,.missing form{display:none}
+  .page{box-shadow:none;margin:0;padding:0;max-width:none}
+  h2,h3{break-after:avoid}
+  tr{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div class="bar">
+  <a href="{{ url_for('report', rid=m.id) }}">Back to report</a>
+  <div class="group">
+    {% if m.mom_md %}<form method="post" action="{{ url_for('mom_generate', rid=m.id) }}" style="display:inline"><button>Rewrite MOM</button></form>{% endif %}
+    <a href="{{ url_for('attendance_csv', rid=m.id) }}">Attendance CSV</a>
+    <button class="primary" onclick="window.print()">Download PDF</button>
+  </div>
+</div>
+{% for msg in get_flashed_messages() %}<div class="flash" role="status">{{ msg }}</div>{% endfor %}
+
+<div class="page">
+  <div class="head">
+    <div><div class="kicker">Minutes of Meeting</div><h1>{{ m.title }}</h1></div>
+    <div class="brand">Meeting Agent<i></i></div>
+  </div>
+
+  <dl class="facts">
+    <div><dt>Date</dt><dd>{{ m.created_at|local('%d %B %Y') }}</dd></div>
+    <div><dt>Platform</dt><dd>{{ m.platform|platform_name or 'Not recorded' }}</dd></div>
+    <div><dt>Attended</dt><dd>{{ people|selectattr('status', 'equalto', 'Attended (spoke)')|list|length }} of {{ people|length }}</dd></div>
+  </dl>
+
+  <h2 class="sec">Attendees</h2>
+  {% if people %}
+  <table>
+    <thead><tr><th>Name</th><th>Designation</th><th>Email</th><th>Status</th><th>Participation</th></tr></thead>
+    <tbody>{% for p in people %}
+      <tr><td>{{ p.name }}</td><td>{{ p.designation or '—' }}</td><td>{{ p.email or '—' }}</td>
+      <td class="{{ 'ok' if p.status.startswith('Attended') else 'dim' }}">{{ p.status }}</td><td>{{ p.pct }}%</td></tr>
+    {% endfor %}</tbody>
+  </table>
+  {% else %}<p class="dim">Attendance was not recorded.</p>{% endif %}
+
+  {% if m.mom_md %}
+    <div class="mom">{{ mom_html|safe }}</div>
+  {% else %}
+    <div class="missing">
+      <p>The minutes for this meeting haven't been written yet.</p>
+      <form method="post" action="{{ url_for('mom_generate', rid=m.id) }}"><button>Write Minutes of Meeting</button></form>
+    </div>
+  {% endif %}
+
+  <div class="foot"><span>Prepared by Meeting Agent from the meeting transcript for {{ prepared_for.name or prepared_for.email }}.</span><span>{{ m.created_at|local('%d %b %Y') }}</span></div>
+</div>
+</body>
+</html>

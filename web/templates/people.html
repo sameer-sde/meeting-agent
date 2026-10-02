@@ -1,0 +1,51 @@
+{% extends "shell.html" %}
+{% block title %}People · Meeting Agent{% endblock %}
+{% block css %}
+.wrap{max-width:820px;margin:0 auto;padding:36px 20px 72px}
+.wrap h1{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:40px;margin:0 0 6px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 24px;margin-top:20px}
+.add{display:grid;grid-template-columns:1.2fr 1.4fr 1.1fr auto;gap:8px}
+table.t{width:100%;border-collapse:collapse;font-size:14px}
+table.t th{text-align:left;font-weight:600;color:var(--muted);font-size:12px;padding:8px 10px;border-bottom:1px solid var(--line)}
+table.t td{padding:10px;border-bottom:1px solid var(--line)}
+table.t tr:last-child td{border-bottom:0}
+.link{background:none;border:0;color:var(--stop);font:600 13px Manrope,sans-serif;cursor:pointer;padding:4px 6px}
+.upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+input[type=file]{color:var(--muted);font:13px Manrope,sans-serif}
+@media(max-width:700px){.add{grid-template-columns:1fr}}
+{% endblock %}
+{% block page %}
+<div class="wrap">
+  <h1>People</h1>
+  <p class="hint">Your team list. Add each person once and every report's attendance and Minutes of Meeting show their email and designation. Names are matched to how they appear in meetings, so use the name they show in Teams or Meet.</p>
+
+  <div class="card">
+    <h2>Add a person</h2>
+    <form method="post" class="add">
+      <input type="text" name="name" placeholder="Name, e.g. Ravi Kumar" required aria-label="Name">
+      <input type="text" name="email" placeholder="Email" aria-label="Email">
+      <input type="text" name="designation" placeholder="Designation, e.g. Backend Dev" aria-label="Designation">
+      <button class="btn accent">Add</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Import from a spreadsheet</h2>
+    <p class="hint">Save your sheet as CSV with columns <code>name</code>, <code>email</code>, <code>designation</code>. People already on the list are skipped.</p>
+    <form method="post" action="{{ url_for('people_import') }}" enctype="multipart/form-data" class="upload">
+      <input type="file" name="file" accept=".csv,text/csv" required aria-label="CSV file">
+      <button class="btn ghost">Import CSV</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>{{ rows|length }} {{ 'person' if rows|length == 1 else 'people' }}</h2>
+    {% if rows %}
+    <table class="t"><thead><tr><th>Name</th><th>Email</th><th>Designation</th><th></th></tr></thead><tbody>
+    {% for p in rows %}<tr><td>{{ p.name }}</td><td>{{ p.email or '—' }}</td><td>{{ p.designation or '—' }}</td>
+      <td><form method="post" action="{{ url_for('people_delete', pid=p.id) }}"><button class="link">Remove</button></form></td></tr>{% endfor %}
+    </tbody></table>
+    {% else %}<p class="hint">No one yet. Add people above or import a CSV.</p>{% endif %}
+  </div>
+</div>
+{% endblock %}

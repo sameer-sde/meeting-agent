@@ -127,6 +127,34 @@ def _user_tz():
 
 # ---------- Reports ----------
 
+def meeting_people(db, user, meeting):
+    """Attendance rows for a meeting: invitees + speakers + the user's directory."""
+    from . import analytics
+    from .models import Person
+    segs = analytics.segments(meeting)
+    try:
+        parts = json.loads(meeting.participants_json or "[]")
+    except ValueError:
+        parts = []
+    invitees = [p for p in parts if p.get("source") == "invite"]
+    directory = [{"name": p.name, "email": p.email, "designation": p.designation}
+                 for p in db.query(Person).filter_by(user_id=user.id)]
+    part_rows = analytics.participation(segs)
+    return segs, analytics.attendance(segs, invitees, directory, part_rows), part_rows, directory
+
+
+def build_mom(db, user, meeting, lines=None):
+    """Write the Minutes of Meeting text for a meeting with Gemini (or Ollama locally)."""
+    _, people, _, _ = meeting_people(db, user, meeting)
+    if lines is None:
+        from . import analytics
+        lines = reports.clean_lines({"segments": analytics.segments(meeting)})
+    attendees = [f"{p['name']} ({p['designation']})" if p["designation"] else p["name"]
+                 for p in people if p["status"].startswith("Attended")]
+    when = (meeting.created_at or datetime.now(timezone.utc)).astimezone(_user_tz()).strftime("%d %B %Y")
+    return reports.make_mom(lines, meeting.title, when, attendees)
+
+
 def process_finished(db, user):
     done_ids = {v for (v,) in db.query(Meeting.vexa_id).filter(Meeting.user_id == user.id)}
     finished = vexa.meetings(user.tx_key, "completed", 50)
@@ -148,11 +176,18 @@ def process_finished(db, user):
             data = vexa.transcript(user.tx_key, m["id"])
             row.transcript_json = json.dumps(data.get("segments", []), ensure_ascii=False, indent=1)
             lines = reports.clean_lines(data)
+            row.participants_json = json.dumps(
+                vexa.participants(user.tx_key, row.platform, row.native_id), ensure_ascii=False)
             if not lines:
                 row.status = "empty"
             else:
                 row.report_md = reports.make_report(lines)
                 row.status = "done"
+                try:
+                    row.created_at = row.created_at or datetime.now(timezone.utc)
+                    row.mom_md = build_mom(db, user, row, lines)
+                except Exception:
+                    traceback.print_exc()  # the report card still goes out; MOM can be made later
         except Exception as e:  # keep going for other meetings
             row.status = "error"
             row.report_md = f"Couldn't write this report: {e}"

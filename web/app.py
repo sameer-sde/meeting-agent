@@ -281,14 +281,132 @@ def cal_delete(cid):
     return redirect(url_for("index"))
 
 
-@app.route("/report/<int:rid>")
-@login_required
-def report(rid):
+def _own_meeting(rid):
     m = Session.get(Meeting, rid)
     if not m or m.user_id != g.user.id:
         abort(404)
+    return m
+
+
+def _people_names(segs, people, directory):
+    names = [p["name"] for p in people] + [d["name"] for d in directory]
+    names += [s.get("speaker") for s in segs if s.get("speaker")]
+    out = []
+    for n in names:
+        if n and n not in out:
+            out.append(n)
+    return out
+
+
+@app.route("/report/<int:rid>")
+@login_required
+def report(rid):
+    from . import analytics
+    m = _own_meeting(rid)
     html = markdown.markdown(m.report_md or "", extensions=["nl2br", "sane_lists"])
-    return render_template("report.html", m=m, report_html=html)
+    segs, people, part_rows, directory = tasks.meeting_people(Session(), g.user, m)
+    ments = analytics.mentions(segs, _people_names(segs, people, directory), TZ)
+    return render_template("report.html", m=m, report_html=html, part_rows=part_rows,
+                           mentions=ments, people=people)
+
+
+@app.route("/report/<int:rid>/mom")
+@login_required
+def mom(rid):
+    m = _own_meeting(rid)
+    _, people, part_rows, _ = tasks.meeting_people(Session(), g.user, m)
+    html = markdown.markdown(m.mom_md or "", extensions=["tables", "sane_lists"])
+    return render_template("mom.html", m=m, mom_html=html, people=people, prepared_for=g.user)
+
+
+@app.post("/report/<int:rid>/mom/generate")
+@login_required
+def mom_generate(rid):
+    m = _own_meeting(rid)
+    try:
+        m.mom_md = tasks.build_mom(Session(), g.user, m)
+        Session.commit()
+        flash("Minutes of Meeting are ready.")
+    except Exception as e:
+        flash(f"Couldn't write the Minutes of Meeting: {e}")
+    return redirect(url_for("mom", rid=rid))
+
+
+@app.route("/report/<int:rid>/attendance.csv")
+@login_required
+def attendance_csv(rid):
+    import csv
+    import io
+    from flask import Response
+    m = _own_meeting(rid)
+    _, people, _, _ = tasks.meeting_people(Session(), g.user, m)
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Name", "Email", "Designation", "Status", "Invite response", "Participation %", "Talk time (min)"])
+    for p in people:
+        w.writerow([p["name"], p["email"], p["designation"], p["status"], p["invite"], p["pct"], p["minutes"]])
+    safe = "".join(c if c.isalnum() else "-" for c in (m.title or "meeting"))[:40].strip("-") or "meeting"
+    return Response("﻿" + buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="attendance-{safe}.csv"'})
+
+
+# ---------- People directory ----------
+
+@app.route("/people", methods=["GET", "POST"])
+@login_required
+def people_page():
+    from .models import Person
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        if name:
+            Session.add(Person(user_id=g.user.id, name=name, email=request.form.get("email", "").strip(),
+                               designation=request.form.get("designation", "").strip()))
+            Session.commit()
+            flash(f"Added {name}.")
+        return redirect(url_for("people_page"))
+    rows = Session.query(Person).filter_by(user_id=g.user.id).order_by(Person.name).all()
+    return render_template("people.html", rows=rows)
+
+
+@app.post("/people/import")
+@login_required
+def people_import():
+    import csv
+    import io
+    from .models import Person
+    f = request.files.get("file")
+    if not f:
+        flash("Choose a CSV file first.")
+        return redirect(url_for("people_page"))
+    text = f.read().decode("utf-8-sig", errors="replace")
+    reader = csv.DictReader(io.StringIO(text))
+    existing = {(p.email or p.name).lower() for p in Session.query(Person).filter_by(user_id=g.user.id)}
+    added = 0
+    for row in reader:
+        row = {(k or "").strip().lower(): (v or "").strip() for k, v in row.items()}
+        name = row.get("name") or row.get("full name") or ""
+        email = row.get("email") or row.get("email address") or ""
+        if not name or (email or name).lower() in existing:
+            continue
+        Session.add(Person(user_id=g.user.id, name=name, email=email,
+                           designation=row.get("designation") or row.get("title") or row.get("role") or ""))
+        existing.add((email or name).lower())
+        added += 1
+    Session.commit()
+    flash(f"Imported {added} people." if added else "No new people found. The CSV needs a 'name' column (and optionally 'email', 'designation').")
+    return redirect(url_for("people_page"))
+
+
+@app.post("/people/<int:pid>/delete")
+@login_required
+def people_delete(pid):
+    from .models import Person
+    p = Session.get(Person, pid)
+    if p and p.user_id == g.user.id:
+        Session.delete(p)
+        Session.commit()
+        flash(f"Removed {p.name}.")
+    return redirect(url_for("people_page"))
 
 
 # ---------- Settings ----------

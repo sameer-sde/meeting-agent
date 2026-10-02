@@ -1,25 +1,109 @@
 {% extends "shell.html" %}
 {% block title %}{{ m.title }} · Meeting Agent{% endblock %}
 {% block css %}
-.reader{max-width:760px;margin:0 auto;padding:32px 20px 64px}
+.reader{max-width:900px;margin:0 auto;padding:32px 20px 72px}
 .back{display:inline-block;margin:0 0 18px;color:var(--muted);text-decoration:none}
-.meta{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 18px}
-.meta h1{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:36px;margin:0;flex-basis:100%}
-article.report{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:40px 52px;font:18px/1.75 Newsreader,Georgia,serif}
+.meta{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 6px}
+.meta h1{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:38px;margin:0;flex-basis:100%}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 24px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:0 0 22px;overflow-x:auto}
+.tabs a{padding:10px 14px;color:var(--muted);text-decoration:none;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs a:hover{color:var(--ink)}
+section.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:28px 32px;margin-bottom:22px;scroll-margin-top:16px}
+section.panel>h2{font-size:26px;margin:0 0 4px}
+article.report{font:18px/1.75 Newsreader,Georgia,serif}
 article.report h1,article.report h2,article.report h3{font-family:Newsreader,Georgia,serif;font-weight:400;line-height:1.25}
-article.report h1{font-size:30px;margin-top:0}
-article.report h2{font-size:24px;margin:28px 0 6px;color:var(--accent)}
-article.report h2:first-child{margin-top:0}
-details{margin-top:18px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px 20px}
-summary{cursor:pointer;color:var(--muted)}
+article.report h2{font-size:23px;margin:26px 0 6px;color:var(--accent)}
+article.report h2:first-child{margin-top:8px}
+.bars{display:grid;gap:14px;margin-top:16px}
+.bar{display:grid;grid-template-columns:170px 1fr 150px;gap:14px;align-items:center}
+.bar .who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.track{height:12px;background:var(--panel2);border-radius:99px;overflow:hidden}
+.fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--gold))}
+.num{display:flex;gap:8px;align-items:center;justify-content:flex-end}
+.num b{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:20px;min-width:56px;text-align:right}
+.scale{font-size:11px;font-weight:600;border-radius:99px;padding:2px 8px;border:1px solid var(--line)}
+.scale.High{color:var(--live);border-color:#3E5A48}
+.scale.Medium{color:var(--gold);border-color:#5A4B26}
+.scale.Low{color:var(--muted)}
+table.t{width:100%;border-collapse:collapse;font-size:14px;margin-top:14px}
+table.t th{text-align:left;font-weight:600;color:var(--muted);font-size:12px;padding:8px 10px;border-bottom:1px solid var(--line)}
+table.t td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
+table.t tr:last-child td{border-bottom:0}
+.status{font-size:12px;border-radius:99px;padding:2px 9px;white-space:nowrap}
+.status.yes{color:var(--live);background:#22302A}
+.status.no{color:var(--muted);background:var(--panel2)}
+details.mention{border-top:1px solid var(--line);padding:12px 0}
+details.mention:first-of-type{border-top:0}
+details.mention summary{cursor:pointer;display:flex;justify-content:space-between;gap:12px;list-style:none}
+details.mention summary::-webkit-details-marker{display:none}
+.count{font-family:Newsreader,Georgia,serif;font-size:22px;color:var(--accent)}
+.hit{display:grid;grid-template-columns:110px 140px 1fr;gap:12px;font-size:14px;padding:8px 0 0}
+.hit .q{color:var(--muted)}
+.hit mark{background:none;color:var(--ink);font-weight:600;text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:3px}
+details.raw{margin-top:4px}
+details.raw summary{cursor:pointer;color:var(--muted)}
 pre{white-space:pre-wrap;font:12px/1.6 'JetBrains Mono',monospace;color:var(--muted);max-height:420px;overflow:auto}
-@media(max-width:700px){article.report{padding:24px 20px}.meta h1{font-size:28px}}
+.empty{color:var(--muted);margin:10px 0 0}
+@media(max-width:720px){section.panel{padding:22px 18px}.bar{grid-template-columns:1fr;gap:6px}.num{justify-content:flex-start}.hit{grid-template-columns:1fr}.meta h1{font-size:30px}table.t{font-size:13px}}
 {% endblock %}
 {% block page %}
 <div class="reader">
   <a class="back" href="{{ url_for('index') }}">Back to all report cards</a>
   <div class="meta"><h1>{{ m.title }}</h1><span class="mono">{{ m.created_at|local('%d %b %Y, %I:%M %p') }}</span>{% if m.platform %}<span class="mono">{{ m.platform|platform_name }}</span>{% endif %}</div>
-  <article class="report">{{ report_html|safe }}</article>
-  {% if m.transcript_json %}<details><summary>Full transcript</summary><pre>{{ m.transcript_json }}</pre></details>{% endif %}
+  <div class="actions">
+    <a class="btn accent" href="{{ url_for('mom', rid=m.id) }}">Minutes of Meeting (PDF)</a>
+    <a class="btn ghost" href="{{ url_for('attendance_csv', rid=m.id) }}">Download attendance</a>
+  </div>
+  <nav class="tabs" aria-label="Report sections">
+    <a href="#card">Report card</a><a href="#participation">Participation</a><a href="#mentions">Mentions</a><a href="#attendance">Attendance</a>
+  </nav>
+
+  <section class="panel" id="card">
+    <article class="report">{{ report_html|safe }}</article>
+  </section>
+
+  <section class="panel" id="participation">
+    <h2>Participation</h2>
+    <p class="hint">Share of the meeting's talk time. High, Medium and Low are relative to an equal share for {{ part_rows|length }} speaker{{ 's' if part_rows|length != 1 }}.</p>
+    {% if part_rows %}
+    <div class="bars">{% for p in part_rows %}
+      <div class="bar"><span class="who">{{ p.name }}</span>
+        <span class="track" role="img" aria-label="{{ p.name }} {{ p.pct }} percent"><span class="fill" style="width:{{ p.pct }}%"></span></span>
+        <span class="num"><b>{{ p.pct }}%</b><span class="scale {{ p.scale }}">{{ p.scale }}</span></span></div>
+    {% endfor %}</div>
+    <table class="t"><thead><tr><th>Person</th><th>Talk time</th><th>Times spoke</th><th>Words</th></tr></thead><tbody>
+    {% for p in part_rows %}<tr><td>{{ p.name }}</td><td>{{ p.minutes }} min</td><td>{{ p.turns }}</td><td>{{ p.words }}</td></tr>{% endfor %}
+    </tbody></table>
+    {% else %}<p class="empty">No speech was recorded for this meeting.</p>{% endif %}
+  </section>
+
+  <section class="panel" id="mentions">
+    <h2>Mentions</h2>
+    <p class="hint">How often each person's name came up when someone else was speaking. Open a name to see when, by whom, and what was said.</p>
+    {% if mentions %}
+      {% for r in mentions %}
+      <details class="mention">
+        <summary><span>{{ r.name }}</span><span class="count">{{ r.count }}×</span></summary>
+        {% for h in r.hits %}
+        <div class="hit"><span class="mono">{{ h.time }}</span><span>{{ h.by }}</span><span class="q">{{ h.pre }}<mark>{{ h.word }}</mark>{{ h.post }}</span></div>
+        {% endfor %}
+      </details>
+      {% endfor %}
+    {% else %}<p class="empty">Nobody was mentioned by name.</p>{% endif %}
+  </section>
+
+  <section class="panel" id="attendance">
+    <h2>Attendance</h2>
+    <p class="hint">Invited people come from the calendar invite. "Attended" means the person was heard speaking; silent attendees can't be detected. Emails and designations come from your <a href="{{ url_for('people_page') }}">People</a> list.</p>
+    {% if people %}
+    <table class="t"><thead><tr><th>Name</th><th>Designation</th><th>Email</th><th>Status</th><th>Participation</th></tr></thead><tbody>
+    {% for p in people %}<tr><td>{{ p.name }}</td><td>{{ p.designation or '—' }}</td><td>{{ p.email or '—' }}</td>
+      <td><span class="status {{ 'yes' if p.status.startswith('Attended') else 'no' }}">{{ p.status }}</span></td><td>{{ p.pct }}%</td></tr>{% endfor %}
+    </tbody></table>
+    {% else %}<p class="empty">No attendance was recorded.</p>{% endif %}
+  </section>
+
+  {% if m.transcript_json %}<section class="panel"><details class="raw"><summary>Full transcript</summary><pre>{{ m.transcript_json }}</pre></details></section>{% endif %}
 </div>
 {% endblock %}

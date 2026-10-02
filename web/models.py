@@ -69,6 +69,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
     meetings = relationship("Meeting", back_populates="user", cascade="all, delete-orphan")
+    people = relationship("Person", cascade="all, delete-orphan")
 
     @property
     def bot_key(self):
@@ -109,9 +110,21 @@ class Meeting(Base):
     status: Mapped[str] = mapped_column(String(32), default="done")  # done | empty | skipped | error
     report_md: Mapped[str] = mapped_column(Text, default="")
     transcript_json: Mapped[str] = mapped_column(Text, default="")
+    mom_md: Mapped[str] = mapped_column(Text, default="")
+    participants_json: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
     user = relationship("User", back_populates="meetings")
+
+
+class Person(Base):
+    """The user's team directory: used to add email and designation to attendance."""
+    __tablename__ = "people"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    name: Mapped[str] = mapped_column(String(255))
+    email: Mapped[str] = mapped_column(String(255), default="")
+    designation: Mapped[str] = mapped_column(String(255), default="")
 
 
 class Asked(Base):
@@ -132,3 +145,20 @@ class KV(Base):
 
 def init_db():
     Base.metadata.create_all(engine)
+    _add_missing_columns()
+
+
+def _add_missing_columns():
+    """create_all() makes new tables but never adds columns to existing ones; do that here."""
+    from sqlalchemy import inspect, text
+    insp = inspect(engine)
+    for table in Base.metadata.sorted_tables:
+        if not insp.has_table(table.name):
+            continue
+        have = {c["name"] for c in insp.get_columns(table.name)}
+        for col in table.columns:
+            if col.name in have:
+                continue
+            ddl = col.type.compile(dialect=engine.dialect)
+            with engine.begin() as conn:
+                conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {col.name} {ddl}'))

@@ -72,6 +72,17 @@ def transcript(tx_key, meeting_id):
     return r.json()
 
 
+def participants(tx_key, platform, native_id):
+    """People invited (from the calendar invite, with emails) and people heard speaking."""
+    if not platform or not native_id:
+        return []
+    try:
+        r = requests.get(f"{BASE}/meetings/{platform}/{native_id}/participants", headers=_h(tx_key), timeout=TIMEOUT)
+        return r.json().get("participants", []) if r.ok else []
+    except (requests.RequestException, ValueError):
+        return []
+
+
 def schedule(tx_key, title, link, when_utc):
     r = requests.post(f"{BASE}/meetings", headers=_h(tx_key), timeout=TIMEOUT, json={
         "title": title or "Meeting", "scheduled_at": when_utc.isoformat(),

@@ -59,7 +59,45 @@ def _ollama(prompt):
 
 
 def make_report(lines):
-    prompt = PROMPT + "\n".join(lines)
+    return _llm(PROMPT + "\n".join(lines))
+
+
+MOM_PROMPT = """You are writing formal Minutes of Meeting (MOM) from a meeting transcript.
+Speakers may use English, Hindi, Telugu or a mix, and some lines may be mis-transcribed.
+Understand the meaning and write everything in clear, professional English.
+
+Meeting title: {title}
+Date: {date}
+Attendees (already listed separately, do not repeat as a section): {attendees}
+
+Write the MOM in markdown with exactly these sections:
+## Purpose of the meeting
+One or two sentences.
+## Agenda covered
+A numbered list of the topics discussed, in the order they came up.
+## Discussion
+For each agenda item, a ### heading with the topic and 2-5 bullet points of what was said,
+naming who raised each point.
+## Decisions
+A numbered list. If none, write "No decisions were recorded."
+## Action items
+A markdown table with columns: No. | Action | Owner | Due date
+Use "Not set" when no owner or date was mentioned.
+## Next steps
+Bullet points, including any next meeting mentioned.
+
+Only include what was actually said. Do not invent names, numbers, dates or decisions.
+
+TRANSCRIPT:
+"""
+
+
+def make_mom(lines, title, date, attendees):
+    prompt = MOM_PROMPT.format(title=title, date=date, attendees=", ".join(attendees) or "Not recorded")
+    return _llm(prompt + "\n".join(lines))
+
+
+def _llm(prompt):
     if os.environ.get("GEMINI_API_KEY"):
         return _gemini(prompt)
     return _ollama(prompt)
