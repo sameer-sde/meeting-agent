@@ -8,3 +8,5 @@ last_meeting.json
 processed.json
 asked.json
 local.db
+.env.vercel
+.vercel

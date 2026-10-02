@@ -3,3 +3,4 @@ reports/
 local.db
 .env
 __pycache__/
+.env.vercel
