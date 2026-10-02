@@ -140,7 +140,7 @@ def meeting_people(db, user, meeting):
     directory = [{"name": p.name, "email": p.email, "designation": p.designation}
                  for p in db.query(Person).filter_by(user_id=user.id)]
     part_rows = analytics.participation(segs)
-    return segs, analytics.attendance(segs, invitees, directory, part_rows), part_rows, directory
+    return segs, analytics.attendance(segs, invitees, directory, part_rows, _user_tz()), part_rows, directory
 
 
 def build_mom(db, user, meeting, lines=None):
@@ -217,8 +217,8 @@ def _meeting_facts(row):
                 start = start.replace(tzinfo=timezone.utc)
             t = start.astimezone(_user_tz())
             bits.append(f"{t.day} {t.strftime('%b')}, {t.strftime('%I:%M %p').lstrip('0')}")
-        ends = [float(s.get("end") or s.get("end_time") or 0) for s in segs]
-        mins = round(max(ends) / 60) if ends and max(ends) > 0 else 0
+        tl = analytics.timeline(segs, _user_tz())
+        mins = tl["minutes"] if tl else 0
         if mins:
             bits.append(f"{mins} min")
         people = len({analytics.speaker_of(s) for s in segs} - {"Unknown speaker"})

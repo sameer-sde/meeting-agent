@@ -35,8 +35,11 @@ def _err(r):
 
 
 def send_bot(bot_key, link, task="translate", bot_name="Meeting Agent"):
-    r = requests.post(f"{BASE}/bots", headers=_h(bot_key), timeout=TIMEOUT,
-                      json={"meeting_url": link, "bot_name": bot_name, "task": task})
+    body = {"meeting_url": link, "bot_name": bot_name, "task": task}
+    # Ask Vexa to keep the meeting audio; fall back to the plain request if it doesn't accept that.
+    r = requests.post(f"{BASE}/bots", headers=_h(bot_key), timeout=TIMEOUT, json={**body, "recording_enabled": True})
+    if r.status_code in (400, 422):
+        r = requests.post(f"{BASE}/bots", headers=_h(bot_key), timeout=TIMEOUT, json=body)
     if not r.ok:
         raise _err(r)
     d = r.json()
@@ -91,6 +94,64 @@ def participants(tx_key, platform, native_id):
         return r.json().get("participants", []) if r.ok else []
     except (requests.RequestException, ValueError):
         return []
+
+
+def _get_json(key, path, **params):
+    try:
+        r = requests.get(f"{BASE}{path}", headers=_h(key), timeout=TIMEOUT, params=params or None)
+        return r.json() if r.ok else None
+    except (requests.RequestException, ValueError):
+        return None
+
+
+def find_recording(keys, meeting_id):
+    """Where the audio of a meeting can be streamed from, or None when Vexa kept no recording.
+
+    keys: {"tx": ..., "bot": ...}. Returns {"url", "key", "started"}; `key` says which of the
+    user's keys opened it, `started` is the clock time the recording began (when Vexa says).
+    """
+    for label, key in keys.items():
+        if not key:
+            continue
+        recs, started = [], None
+        data = _get_json(key, f"/transcripts/by-id/{meeting_id}")
+        if isinstance(data, dict):
+            recs = [r for r in (data.get("recordings") or []) if isinstance(r, dict)]
+            started = data.get("start_time")
+        if not recs:
+            listing = _get_json(key, "/recordings", limit=100)
+            if listing is not None:
+                recs = [r for r in _rows(listing, "recordings", "items")
+                        if isinstance(r, dict) and str(r.get("meeting_id")) == str(meeting_id)]
+        for rec in recs:
+            rid = rec.get("id") or rec.get("recording_id")
+            if rid is None:
+                continue
+            media = [m for m in (rec.get("media_files") or []) if isinstance(m, dict)]
+            audio = next((m for m in media if "audio" in str(m.get("type") or m.get("media_type") or "")),
+                         media[0] if media else None)
+            url = None
+            master = _get_json(key, f"/recordings/{rid}/master", type="audio")
+            if isinstance(master, dict):
+                url = master.get("raw_url") or master.get("url")
+            if not url and audio and audio.get("id") is not None:
+                url = f"/recordings/{rid}/media/{audio['id']}/raw"
+            if url:
+                return {"url": url, "key": label,
+                        "started": rec.get("started_at") or rec.get("start_time") or rec.get("created_at") or started}
+    return None
+
+
+def is_vexa_url(url):
+    """True for addresses on Vexa's API (need the user's key); False for ready-to-play links."""
+    return url.startswith("/") or url.startswith(BASE)
+
+
+def audio_bytes(key, url, start, size):
+    """Fetch one piece of a recording. Returns the upstream response (status 200 or 206)."""
+    full = BASE + url if url.startswith("/") else url
+    return requests.get(full, headers={"X-API-Key": key, "Range": f"bytes={start}-{start + size - 1}"},
+                        timeout=60)
 
 
 def schedule(tx_key, title, link, when_utc, bot_name=None):

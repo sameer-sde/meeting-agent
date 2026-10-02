@@ -20,7 +20,46 @@ def segments(meeting):
         return []
     if isinstance(data, dict):
         data = data.get("segments", [])
-    return [s for s in data if isinstance(s, dict) and (s.get("text") or "").strip()]
+    return normalise([s for s in data if isinstance(s, dict) and (s.get("text") or "").strip()])
+
+
+def _num(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+EPOCH = 1_000_000_000  # anything above this is a clock time in seconds, not "seconds into the call"
+
+
+def normalise(segs):
+    """Make every segment's start/end mean "seconds into the meeting".
+
+    Vexa sometimes sends start/end as seconds from the start of the call and sometimes as
+    clock times (seconds since 1970). The second kind is turned into the first here, and the
+    clock time is kept in absolute_start_time, so the rest of the code only sees one format.
+    """
+    out = []
+    for s in segs:
+        s = dict(s)
+        st = _num(s.get("start"))
+        en = _num(s.get("end"))
+        s["start"] = st if st is not None else _num(s.get("start_time"))
+        s["end"] = en if en is not None else _num(s.get("end_time"))
+        out.append(s)
+    clocks = [s["start"] for s in out if s["start"] is not None and s["start"] > EPOCH]
+    if not clocks:
+        return out
+    zero = min(clocks)
+    for s in out:
+        if s["start"] is not None and s["start"] > EPOCH:
+            if not s.get("absolute_start_time"):
+                s["absolute_start_time"] = datetime.fromtimestamp(s["start"], timezone.utc).isoformat()
+            s["start"] -= zero
+        if s["end"] is not None and s["end"] > EPOCH:
+            s["end"] -= zero
+    return out
 
 
 def _duration(s):
@@ -61,6 +100,72 @@ def time_label(s, tz, base=None):
         return (base + timedelta(seconds=sec)).astimezone(tz).strftime("%I:%M:%S %p")
     sec = int(sec)
     return f"{sec // 60:02d}:{sec % 60:02d}"
+
+
+def clock_label(sec, tz, base=None):
+    """Like time_label, for any moment given as seconds into the meeting."""
+    return time_label({"start": sec}, tz, base)
+
+
+def _end(s):
+    st = _num(s.get("start")) or 0.0
+    return st + _duration(s)
+
+
+def transcript_rows(segs, tz, junk=()):
+    """One row per spoken line, in order: time, speaker and text."""
+    base = clock_base(segs)
+    rows, last = [], None
+    for s in segs:
+        text = (s.get("text") or "").strip()
+        if not text or text.lower().strip(" .。!") in junk:
+            continue
+        spk = speaker_of(s)
+        rows.append({"sec": round(_num(s.get("start")) or 0.0, 1), "time": time_label(s, tz, base),
+                     "speaker": spk, "text": text, "same": spk == last})
+        last = spk
+    return rows
+
+
+def spans(segs):
+    """Per speaker: first and last second they were heard."""
+    out = {}
+    for s in segs:
+        spk = speaker_of(s)
+        st = _num(s.get("start")) or 0.0
+        a, b = out.get(spk, (st, _end(s)))
+        out[spk] = (min(a, st), max(b, _end(s)))
+    return out
+
+
+def timeline(segs, tz):
+    """Who spoke when, as blocks placed along the length of the meeting (in percent)."""
+    if not segs:
+        return None
+    base = clock_base(segs)
+    t0 = min((_num(s.get("start")) or 0.0) for s in segs)
+    t1 = max(_end(s) for s in segs)
+    total = max(t1 - t0, 1.0)
+    lanes = {}
+    for s in segs:
+        st = _num(s.get("start")) or 0.0
+        en = _end(s)
+        blocks = lanes.setdefault(speaker_of(s), [])
+        if blocks and st - blocks[-1]["end"] < 2:      # join lines spoken back to back
+            blocks[-1]["end"] = max(blocks[-1]["end"], en)
+        else:
+            blocks.append({"start": st, "end": en})
+    rows = []
+    for name, blocks in lanes.items():
+        for b in blocks:
+            b["left"] = round((b["start"] - t0) / total * 100, 2)
+            b["width"] = max(round((b["end"] - b["start"]) / total * 100, 2), 0.4)
+            b["time"] = clock_label(b["start"], tz, base)
+            b["sec"] = round(b["start"], 1)
+        rows.append({"name": name, "blocks": blocks, "seconds": sum(b["end"] - b["start"] for b in blocks)})
+    rows.sort(key=lambda r: r["seconds"], reverse=True)
+    return {"rows": rows, "from": clock_label(t0, tz, base), "to": clock_label(t1, tz, base),
+            "minutes": max(round(total / 60), 1)}
 
 
 def speaker_of(s):
@@ -135,7 +240,7 @@ def _norm(name):
     return re.sub(r"\s+", " ", (name or "").strip().lower())
 
 
-def attendance(segs, invitees, directory, part_rows):
+def attendance(segs, invitees, directory, part_rows, tz=None):
     """Merge who was invited, who spoke and the team directory into one attendance list.
 
     invitees:  [{"name", "email", "response_status"}] from the calendar invite
@@ -147,6 +252,12 @@ def attendance(segs, invitees, directory, part_rows):
         by_name[_norm(d.get("name"))] = d
         by_name.setdefault(_norm(_first_name(d.get("name"))), d)
     pct = {r["name"]: r for r in part_rows}
+    span, base = spans(segs), clock_base(segs)
+
+    def heard(spk):
+        if spk not in span or tz is None:
+            return {"first": "", "last": ""}
+        return {"first": clock_label(span[spk][0], tz, base), "last": clock_label(span[spk][1], tz, base)}
 
     rows, seen = [], set()
 
@@ -172,7 +283,7 @@ def attendance(segs, invitees, directory, part_rows):
                      "designation": d.get("designation", ""),
                      "status": "Attended (spoke)" if spoke else "Invited, not heard",
                      "invite": (inv.get("response_status") or "").replace("_", " "),
-                     "pct": p.get("pct", 0), "minutes": p.get("minutes", 0)})
+                     "pct": p.get("pct", 0), "minutes": p.get("minutes", 0), **heard(spoke)})
 
     for spk in speakers:
         if _norm(spk) in seen:
@@ -181,6 +292,7 @@ def attendance(segs, invitees, directory, part_rows):
         d = lookup(spk, None)
         p = pct.get(spk, {})
         rows.append({"name": spk, "email": d.get("email", ""), "designation": d.get("designation", ""),
-                     "status": "Attended (spoke)", "invite": "", "pct": p.get("pct", 0), "minutes": p.get("minutes", 0)})
+                     "status": "Attended (spoke)", "invite": "", "pct": p.get("pct", 0), "minutes": p.get("minutes", 0),
+                     **heard(spk)})
     rows.sort(key=lambda r: (r["status"] != "Attended (spoke)", -r["pct"], r["name"].lower()))
     return rows

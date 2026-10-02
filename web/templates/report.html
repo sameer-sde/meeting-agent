@@ -19,7 +19,7 @@ article.report h2:first-child{margin-top:8px}
 .bar{display:grid;grid-template-columns:170px 1fr 150px;gap:14px;align-items:center}
 .bar .who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .track{height:12px;background:var(--panel2);border-radius:99px;overflow:hidden}
-.fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--gold))}
+.fill{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--gold))}
 .num{display:flex;gap:8px;align-items:center;justify-content:flex-end}
 .num b{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:20px;min-width:56px;text-align:right}
 .scale{font-size:11px;font-weight:600;border-radius:99px;padding:2px 8px;border:1px solid var(--line)}
@@ -45,22 +45,78 @@ details.raw{margin-top:4px}
 details.raw summary{cursor:pointer;color:var(--muted)}
 pre{white-space:pre-wrap;font:12px/1.6 'JetBrains Mono',monospace;color:var(--muted);max-height:420px;overflow:auto}
 .empty{color:var(--muted);margin:10px 0 0}
-@media(max-width:720px){section.panel{padding:22px 18px}.bar{grid-template-columns:1fr;gap:6px}.num{justify-content:flex-start}.hit{grid-template-columns:1fr}.meta h1{font-size:30px}table.t{font-size:13px}}
+.wide{overflow-x:auto}
+.rec{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:16px 22px}
+.rec[hidden]{display:none}
+.rec audio{flex:1;min-width:240px;height:40px;color-scheme:dark}
+.tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 6px}
+.tools input{flex:1;min-width:200px}
+.lines{max-height:560px;overflow:auto;margin-top:8px;border-top:1px solid var(--line)}
+.line{display:grid;grid-template-columns:104px 160px 1fr;gap:12px;padding:9px 4px;border-bottom:1px solid var(--line);font-size:14px}
+.line:last-child{border-bottom:0}
+.line[hidden]{display:none}
+.line .spk{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.line .spk.same{color:var(--muted);font-weight:400}
+.searching .spk.same{color:var(--ink);font-weight:600}
+.line mark{background:#5A3B2A;color:var(--ink);border-radius:3px;padding:0 2px}
+.jump{background:none;border:0;padding:0;cursor:default;text-align:left}
+.canplay .jump{cursor:pointer}
+.canplay .jump:hover{color:var(--accent)}
+.lanes{display:grid;gap:12px;margin-top:16px}
+.lane{display:grid;grid-template-columns:170px 1fr;gap:14px;align-items:center}
+.lane .who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.strip{position:relative;height:18px;background:var(--panel2);border-radius:6px;overflow:hidden}
+.strip button{position:absolute;top:0;bottom:0;border:0;padding:0;border-radius:3px;min-width:3px;cursor:default}
+.canplay .strip button{cursor:pointer}
+.c0{background:var(--accent)}.c1{background:var(--live)}.c2{background:var(--teams)}.c3{background:var(--gold)}.c4{background:#D98BB0}.c5{background:#7FC4D4}
+.axis{display:flex;justify-content:space-between;margin:8px 0 0 184px}
+@media(max-width:720px){section.panel{padding:22px 18px}.bar{grid-template-columns:1fr;gap:6px}.num{justify-content:flex-start}.hit{grid-template-columns:1fr}.line{grid-template-columns:1fr;gap:2px}.lane{grid-template-columns:1fr;gap:6px}.axis{margin-left:0}.meta h1{font-size:30px}table.t{font-size:13px}}
 {% endblock %}
 {% block page %}
-<div class="reader">
+<div class="reader" id="reader">
   <a class="back" href="{{ url_for('index') }}">Back to all report cards</a>
   <div class="meta"><h1>{{ m.title }}</h1><span class="mono">{{ m.created_at|local('%d %b %Y, %I:%M %p') }}</span>{% if m.platform %}<span class="mono">{{ m.platform|platform_name }}</span>{% endif %}</div>
   <div class="actions">
     <a class="btn accent" href="{{ url_for('mom', rid=m.id) }}">Minutes of Meeting (PDF)</a>
     <a class="btn ghost" href="{{ url_for('attendance_csv', rid=m.id) }}">Download attendance</a>
+    {% if lines %}<a class="btn ghost" href="{{ url_for('transcript_txt', rid=m.id) }}">Download transcript</a>{% endif %}
   </div>
+  <section class="panel rec" id="recording" hidden>
+    <span class="mono">RECORDING</span>
+    <audio id="player" controls preload="none"></audio>
+  </section>
   <nav class="tabs" aria-label="Report sections">
-    <a href="#card">Report card</a><a href="#participation">Participation</a><a href="#mentions">Mentions</a><a href="#attendance">Attendance</a>
+    <a href="#card">Report card</a><a href="#transcript">Transcript</a><a href="#speakers">Speakers</a><a href="#participation">Participation</a><a href="#mentions">Mentions</a><a href="#attendance">Attendance</a>
   </nav>
 
   <section class="panel" id="card">
     <article class="report">{{ report_html|safe }}</article>
+  </section>
+
+  <section class="panel" id="transcript">
+    <h2>Transcript</h2>
+    <p class="hint">Everything that was said, line by line, in English.<span class="playhint" hidden> Click a time to hear that moment.</span></p>
+    {% if lines %}
+    <div class="tools">
+      <input type="text" id="find" placeholder="Search the transcript" aria-label="Search the transcript" autocomplete="off">
+      <span class="mono" id="found">{{ lines|length }} lines</span>
+    </div>
+    <div class="lines" id="lines">{% for l in lines %}
+      <div class="line"><button class="jump mono" data-sec="{{ l.sec }}">{{ l.time }}</button><span class="spk {{ 'same' if l.same }}">{{ l.speaker }}</span><span class="txt">{{ l.text }}</span></div>
+    {% endfor %}</div>
+    {% else %}<p class="empty">No speech was recorded for this meeting.</p>{% endif %}
+  </section>
+
+  <section class="panel" id="speakers">
+    <h2>Speakers</h2>
+    <p class="hint">Who spoke when, across the {{ timeline.minutes if timeline else 0 }} minute{{ 's' if not timeline or timeline.minutes != 1 }} of the meeting.<span class="playhint" hidden> Click a block to hear it.</span></p>
+    {% if timeline %}
+    <div class="lanes">{% for r in timeline.rows %}{% set lane = loop.index0 % 6 %}
+      <div class="lane"><span class="who">{{ r.name }}</span>
+        <span class="strip">{% for b in r.blocks %}<button class="jump c{{ lane }}" data-sec="{{ b.sec }}" style="left:{{ b.left }}%;width:{{ b.width }}%" title="{{ r.name }} · {{ b.time }}" aria-label="{{ r.name }} spoke at {{ b.time }}"></button>{% endfor %}</span></div>
+    {% endfor %}</div>
+    <div class="axis"><span class="mono">{{ timeline.from }}</span><span class="mono">{{ timeline.to }}</span></div>
+    {% else %}<p class="empty">No speech was recorded for this meeting.</p>{% endif %}
   </section>
 
   <section class="panel" id="participation">
@@ -95,15 +151,51 @@ pre{white-space:pre-wrap;font:12px/1.6 'JetBrains Mono',monospace;color:var(--mu
 
   <section class="panel" id="attendance">
     <h2>Attendance</h2>
-    <p class="hint">Invited people come from the calendar invite. "Attended" means the person was heard speaking; silent attendees can't be detected. Emails and designations come from your <a href="{{ url_for('people_page') }}">People</a> list.</p>
+    <p class="hint">Invited people come from the calendar invite. "Attended" means the person was heard speaking; silent attendees can't be detected, so the times show when each person first and last spoke. Emails and designations come from your <a href="{{ url_for('people_page') }}">People</a> list.</p>
     {% if people %}
-    <table class="t"><thead><tr><th>Name</th><th>Designation</th><th>Email</th><th>Status</th><th>Participation</th></tr></thead><tbody>
+    <div class="wide"><table class="t"><thead><tr><th>Name</th><th>Designation</th><th>Email</th><th>Status</th><th>First spoke</th><th>Last spoke</th><th>Participation</th></tr></thead><tbody>
     {% for p in people %}<tr><td>{{ p.name }}</td><td>{{ p.designation or '—' }}</td><td>{{ p.email or '—' }}</td>
-      <td><span class="status {{ 'yes' if p.status.startswith('Attended') else 'no' }}">{{ p.status }}</span></td><td>{{ p.pct }}%</td></tr>{% endfor %}
-    </tbody></table>
+      <td><span class="status {{ 'yes' if p.status.startswith('Attended') else 'no' }}">{{ p.status }}</span></td><td>{{ p.first or '—' }}</td><td>{{ p.last or '—' }}</td><td>{{ p.pct }}%</td></tr>{% endfor %}
+    </tbody></table></div>
     {% else %}<p class="empty">No attendance was recorded.</p>{% endif %}
   </section>
 
-  {% if m.transcript_json %}<section class="panel"><details class="raw"><summary>Full transcript</summary><pre>{{ m.transcript_json }}</pre></details></section>{% endif %}
 </div>
+<script>
+(function () {
+  var find = document.getElementById('find'), found = document.getElementById('found');
+  var rows = [].slice.call(document.querySelectorAll('#lines .line'));
+  rows.forEach(function (r) { var t = r.querySelector('.txt'); t.dataset.raw = t.textContent; });
+  function esc(s) { return s.replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
+  if (find) find.addEventListener('input', function () {
+    var q = find.value.trim().toLowerCase(), shown = 0;
+    rows.forEach(function (r) {
+      var t = r.querySelector('.txt'), raw = t.dataset.raw, who = r.querySelector('.spk').textContent;
+      var at = q ? raw.toLowerCase().indexOf(q) : -1;
+      var hit = !q || at > -1 || who.toLowerCase().indexOf(q) > -1;
+      r.hidden = !hit;
+      if (hit) shown++;
+      t.innerHTML = at > -1 ? esc(raw.slice(0, at)) + '<mark>' + esc(raw.slice(at, at + q.length)) + '</mark>' + esc(raw.slice(at + q.length)) : esc(raw);
+    });
+    document.getElementById('lines').classList.toggle('searching', !!q);
+    found.textContent = q ? shown + ' of ' + rows.length + ' lines' : rows.length + ' lines';
+  });
+
+  var player = document.getElementById('player'), shift = 0;
+  fetch("{{ url_for('audio_check', rid=m.id) }}").then(function (r) { return r.json(); }).then(function (d) {
+    if (!d.ok) return;
+    shift = d.shift || 0;
+    player.src = "{{ url_for('audio', rid=m.id) }}";
+    document.getElementById('recording').hidden = false;
+    document.getElementById('reader').classList.add('canplay');
+    [].forEach.call(document.querySelectorAll('.playhint'), function (e) { e.hidden = false; });
+  }).catch(function () {});
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('.jump') : null;
+    if (!b || !player.src) return;
+    player.currentTime = Math.max(0, parseFloat(b.dataset.sec) + shift);
+    player.play();
+  });
+})();
+</script>
 {% endblock %}

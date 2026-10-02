@@ -485,8 +485,115 @@ def report(rid):
     html = markdown.markdown(m.report_md or "", extensions=["nl2br", "sane_lists"])
     segs, people, part_rows, directory = tasks.meeting_people(Session(), g.user, m)
     ments = analytics.mentions(segs, _people_names(segs, people, directory), TZ)
+    from .reports import JUNK
     return render_template("report.html", m=m, report_html=html, part_rows=part_rows,
-                           mentions=ments, people=people)
+                           mentions=ments, people=people,
+                           lines=analytics.transcript_rows(segs, TZ, JUNK),
+                           timeline=analytics.timeline(segs, TZ))
+
+
+def _safe_name(m):
+    return "".join(c if c.isalnum() else "-" for c in (m.title or "meeting"))[:40].strip("-") or "meeting"
+
+
+@app.route("/report/<int:rid>/transcript.txt")
+@login_required
+def transcript_txt(rid):
+    from flask import Response
+    from . import analytics
+    from .reports import JUNK
+    m = _own_meeting(rid)
+    rows = analytics.transcript_rows(analytics.segments(m), TZ, JUNK)
+    head = f"{m.title}\n{local_time(m.created_at, '%d %b %Y, %I:%M %p')}\n\n"
+    body = "\n".join(f"[{r['time']}] {r['speaker']}: {r['text']}" for r in rows)
+    return Response(head + body + "\n", mimetype="text/plain; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="transcript-{_safe_name(m)}.txt"'})
+
+
+# ---------- Recording (audio kept by Vexa) ----------
+
+AUDIO_PIECE = 2 * 1024 * 1024   # sent to the browser in small pieces so it also works on Vercel
+LINK_FRESH_SECONDS = 300        # ready-to-play links from Vexa can expire, so look them up again
+
+
+def _recording(m):
+    """Find (and remember) where this meeting's audio is. None when there isn't any."""
+    import json
+    try:
+        ref = json.loads(m.recording_json or "null")
+    except ValueError:
+        ref = None
+    if ref and (vexa.is_vexa_url(ref["url"]) or time.time() - ref.get("at", 0) < LINK_FRESH_SECONDS):
+        return ref
+    if not m.vexa_id or not g.user.ready:
+        return None
+    ref = vexa.find_recording({"tx": g.user.tx_key, "bot": g.user.bot_key}, m.vexa_id)
+    if ref:
+        ref["at"] = int(time.time())
+        m.recording_json = json.dumps(ref)
+        Session.commit()
+    return ref
+
+
+def _audio_shift(m, ref):
+    """Seconds between the start of the recording and second 0 of the transcript."""
+    from . import analytics
+    base = analytics.clock_base(analytics.segments(m))
+    if not base or not ref.get("started"):
+        return 0
+    try:
+        started = datetime.fromisoformat(str(ref["started"]).replace("Z", "+00:00"))
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        shift = (base - started).total_seconds()
+        return round(shift, 1) if 0 <= shift < 6 * 3600 else 0
+    except ValueError:
+        return 0
+
+
+@app.route("/report/<int:rid>/audio/check")
+@login_required
+def audio_check(rid):
+    m = _own_meeting(rid)
+    try:
+        ref = _recording(m)
+        if not ref:
+            return jsonify(ok=False)
+        if vexa.is_vexa_url(ref["url"]):
+            key = g.user.tx_key if ref.get("key") == "tx" else g.user.bot_key
+            if vexa.audio_bytes(key, ref["url"], 0, 2).status_code not in (200, 206):
+                return jsonify(ok=False)
+        return jsonify(ok=True, shift=_audio_shift(m, ref))
+    except Exception as e:
+        print("Recording check failed:", e)
+        return jsonify(ok=False)
+
+
+@app.route("/report/<int:rid>/audio")
+@login_required
+def audio(rid):
+    import re
+    from flask import Response
+    m = _own_meeting(rid)
+    ref = _recording(m)
+    if not ref:
+        abort(404)
+    if not vexa.is_vexa_url(ref["url"]):
+        return redirect(ref["url"])
+    match = re.match(r"bytes=(\d+)-(\d*)", request.headers.get("Range", ""))
+    start = int(match.group(1)) if match else 0
+    size = AUDIO_PIECE
+    if match and match.group(2):
+        size = max(1, min(AUDIO_PIECE, int(match.group(2)) - start + 1))
+    key = g.user.tx_key if ref.get("key") == "tx" else g.user.bot_key
+    up = vexa.audio_bytes(key, ref["url"], start, size)
+    if up.status_code not in (200, 206):
+        abort(404)
+    headers = {"Accept-Ranges": "bytes", "Cache-Control": "private, max-age=3600"}
+    if up.headers.get("Content-Range"):
+        headers["Content-Range"] = up.headers["Content-Range"]
+    return Response(up.content, status=up.status_code, headers=headers,
+                    mimetype=up.headers.get("Content-Type", "audio/webm").split(";")[0])
 
 
 @app.route("/report/<int:rid>/mom")
@@ -521,10 +628,12 @@ def attendance_csv(rid):
     _, people, _, _ = tasks.meeting_people(Session(), g.user, m)
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["Name", "Email", "Designation", "Status", "Invite response", "Participation %", "Talk time (min)"])
+    w.writerow(["Name", "Email", "Designation", "Status", "Invite response", "Participation %", "Talk time (min)",
+                "First spoke", "Last spoke"])
     for p in people:
-        w.writerow([p["name"], p["email"], p["designation"], p["status"], p["invite"], p["pct"], p["minutes"]])
-    safe = "".join(c if c.isalnum() else "-" for c in (m.title or "meeting"))[:40].strip("-") or "meeting"
+        w.writerow([p["name"], p["email"], p["designation"], p["status"], p["invite"], p["pct"], p["minutes"],
+                    p.get("first", ""), p.get("last", "")])
+    safe = _safe_name(m)
     return Response("﻿" + buf.getvalue(), mimetype="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="attendance-{safe}.csv"'})
 

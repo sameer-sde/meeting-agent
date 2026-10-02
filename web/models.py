@@ -148,6 +148,7 @@ class Meeting(Base):
     transcript_json: Mapped[str] = mapped_column(Text, default="")
     mom_md: Mapped[str] = mapped_column(Text, default="")
     participants_json: Mapped[str] = mapped_column(Text, default="")
+    recording_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # where the audio is, once found
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
     user = relationship("User", back_populates="meetings")
