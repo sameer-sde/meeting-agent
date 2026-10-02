@@ -39,16 +39,34 @@ def clean_lines(data):
     return lines
 
 
-def _gemini(prompt, as_json=False):
+_no_fast = set()  # models that refused the "answer quickly" setting, so it isn't tried again
+
+
+def _gemini(prompt, as_json=False, fast=False):
+    """fast=True is for the chat: a quicker model if one is set, and no long "thinking" first."""
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-    r = requests.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-        headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"], "Content-Type": "application/json"},
-        json={"contents": [{"parts": [{"text": prompt}]}],
-              **({"generationConfig": {"responseMimeType": "application/json"}} if as_json else {})}, timeout=120)
+    if fast:
+        model = os.environ.get("GEMINI_CHAT_MODEL") or model
+    config = {"responseMimeType": "application/json"} if as_json else {}
+    quick = None
+    if fast and model not in _no_fast:
+        # Flash models think before answering, which is most of the wait. Turn that right down.
+        quick = {"thinkingBudget": 0} if "2.5" in model else {"thinkingLevel": "minimal"}
+
+    def call(cfg):
+        return requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"], "Content-Type": "application/json"},
+            json={"contents": [{"parts": [{"text": prompt}]}], **({"generationConfig": cfg} if cfg else {})},
+            timeout=120)
+
+    r = call({**config, "thinkingConfig": quick} if quick else config)
+    if quick and r.status_code == 400:   # this model doesn't take that setting; ask the normal way
+        _no_fast.add(model)
+        r = call(config)
     r.raise_for_status()
     parts = r.json()["candidates"][0]["content"]["parts"]
-    return "".join(p.get("text", "") for p in parts).strip()
+    return "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
 
 
 def _ollama(prompt):
@@ -98,9 +116,9 @@ def make_mom(lines, title, date, attendees):
     return _llm(prompt + "\n".join(lines))
 
 
-def _llm(prompt, as_json=False):
+def _llm(prompt, as_json=False, fast=False):
     if os.environ.get("GEMINI_API_KEY"):
-        return _gemini(prompt, as_json)
+        return _gemini(prompt, as_json, fast)
     return _ollama(prompt)
 
 
@@ -188,6 +206,6 @@ def answer(lines, title, question, history=(), live=False):
     title=None means "all recent meetings": `lines` are then report cards, not transcript lines."""
     past = "\n".join(f"{'User' if role == 'user' else 'You'}: {text}" for role, text in history) or "(nothing yet)"
     if title is None:
-        return _llm(ALL_PROMPT.format(transcript="\n\n".join(lines), history=past, question=question))
+        return _llm(ALL_PROMPT.format(transcript="\n\n".join(lines), history=past, question=question), fast=True)
     return _llm(CHAT_PROMPT.format(live=LIVE_NOTE if live else "", title=title, transcript="\n".join(lines),
-                                   history=past, question=question))
+                                   history=past, question=question), fast=True)

@@ -16,7 +16,11 @@
 .msg{max-width:86%;padding:9px 13px;border-radius:14px;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
 .msg.user{align-self:flex-end;background:var(--accent);color:#1B1A17;border-bottom-right-radius:4px}
 .msg.bot{align-self:flex-start;background:var(--panel2);border:1px solid var(--line);border-bottom-left-radius:4px}
-.msg.bot.wait{color:var(--muted)}
+.msg.bot.wait{color:var(--muted);display:flex;gap:5px;align-items:center;padding:14px}
+.msg.bot.wait i{width:7px;height:7px;border-radius:50%;background:var(--muted);animation:cb-dot 1.2s infinite}
+.msg.bot.wait i:nth-child(2){animation-delay:.2s}.msg.bot.wait i:nth-child(3){animation-delay:.4s}
+@keyframes cb-dot{0%,60%,100%{opacity:.25;transform:none}30%{opacity:1;transform:translateY(-3px)}}
+@media (prefers-reduced-motion:reduce){.msg.bot.wait i{animation:none}}
 .msg.bot.err{color:#F0C6A8;border-color:#5A3B2A}
 .msg.bot p{margin:0 0 8px}.msg.bot p:last-child{margin:0}
 .msg.bot ul,.msg.bot ol{margin:4px 0 8px;padding-left:20px}
@@ -69,15 +73,17 @@
     text = text.trim();
     if (!text || btn.disabled) return;
     add('user', text);
-    var a = add('bot wait', 'Reading the meeting notes…');
+    var a = add('bot wait', '');
+    a.setAttribute('aria-label', 'Thinking');
+    a.innerHTML = '<i></i><i></i><i></i>';
     input.value = ''; btn.disabled = true;
     fetch(cb.dataset.url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({question: text})})
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        a.className = 'msg bot' + (d.error ? ' err' : '');
+        a.className = 'msg bot' + (d.error ? ' err' : ''); a.removeAttribute('aria-label');
         if (d.html) a.innerHTML = d.html; else a.textContent = d.error || 'No answer came back. Try again.';
       })
-      .catch(function () { a.className = 'msg bot err'; a.textContent = "Couldn't get an answer just now. Try again in a minute."; })
+      .catch(function () { a.className = 'msg bot err'; a.removeAttribute('aria-label'); a.textContent = "Couldn't get an answer just now. Try again in a minute."; })
       .then(function () { btn.disabled = false; msgs.scrollTop = msgs.scrollHeight; input.focus(); });
   }
   form.addEventListener('submit', function (e) { e.preventDefault(); send(input.value); });
