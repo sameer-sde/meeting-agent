@@ -1,0 +1,44 @@
+{# A chat with one meeting. Needs: messages, ask_url, and (optional) clear_url. #}
+<div class="chat" id="chat" data-url="{{ ask_url }}">
+  <div class="msgs" id="msgs" aria-live="polite">
+    {% for c in messages %}<div class="msg {{ c.role }}">{% if c.role == 'bot' %}{{ c.text|chat_html|safe }}{% else %}{{ c.text }}{% endif %}</div>{% endfor %}
+  </div>
+  <div class="chips" id="chips">
+    {% for q in chat_ideas %}<button type="button" class="chip">{{ q }}</button>{% endfor %}
+  </div>
+  <form class="send" id="chatform">
+    <input type="text" id="question" maxlength="500" placeholder="Ask anything about this meeting" aria-label="Your question" autocomplete="off" required>
+    <button class="btn accent" id="askbtn">Send</button>
+  </form>
+</div>
+{% if clear_url and messages %}<form method="post" action="{{ clear_url }}" class="clear"><button class="linkbtn">Clear this chat</button></form>{% endif %}
+<script>
+(function () {
+  var chat = document.getElementById('chat'), msgs = document.getElementById('msgs');
+  var form = document.getElementById('chatform'), input = document.getElementById('question'), btn = document.getElementById('askbtn');
+  function add(cls, text) {
+    var d = document.createElement('div'); d.className = 'msg ' + cls; d.textContent = text;
+    msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight; return d;
+  }
+  function send(text) {
+    text = text.trim();
+    if (!text || btn.disabled) return;
+    add('user', text);
+    var a = add('bot wait', 'Reading the meeting…');
+    input.value = ''; btn.disabled = true;
+    fetch(chat.dataset.url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({question: text})})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        a.className = 'msg bot' + (d.error ? ' err' : '');
+        if (d.html) a.innerHTML = d.html; else a.textContent = d.error || 'No answer came back. Try again.';
+      })
+      .catch(function () { a.className = 'msg bot err'; a.textContent = "Couldn't get an answer just now. Try again in a minute."; })
+      .then(function () { btn.disabled = false; msgs.scrollTop = msgs.scrollHeight; input.focus(); });
+  }
+  form.addEventListener('submit', function (e) { e.preventDefault(); send(input.value); });
+  document.getElementById('chips').addEventListener('click', function (e) {
+    if (e.target.classList.contains('chip')) send(e.target.textContent);
+  });
+  msgs.scrollTop = msgs.scrollHeight;
+})();
+</script>

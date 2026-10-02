@@ -85,6 +85,14 @@ def transcript(tx_key, meeting_id):
     return r.json()
 
 
+def live_transcript(tx_key, platform, native_id):
+    """What has been said so far in a meeting that is still running."""
+    r = requests.get(f"{BASE}/transcripts/{platform}/{native_id}", headers=_h(tx_key), timeout=TIMEOUT)
+    if not r.ok:
+        raise _err(r)
+    return r.json()
+
+
 def participants(tx_key, platform, native_id):
     """People invited (from the calendar invite, with emails) and people heard speaking."""
     if not platform or not native_id:

@@ -20,7 +20,7 @@ from flask import (Flask, abort, flash, g, jsonify, redirect, render_template,  
 from werkzeug.middleware.proxy_fix import ProxyFix  # noqa: E402
 
 from . import tasks, vexa  # noqa: E402
-from .models import Asked, Greeted, Meeting, Session, Task, User, init_db  # noqa: E402
+from .models import Asked, ChatMessage, Greeted, Meeting, Session, Task, User, init_db  # noqa: E402
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
@@ -518,6 +518,8 @@ def report(rid):
     share_to = [p for p in people if p["email"] and p["email"].lower() != mine]
     return render_template("report.html", m=m, report_html=html, part_rows=part_rows,
                            mentions=ments, people=people, chapters=chapters, share_to=share_to,
+                           messages=Session.query(ChatMessage).filter_by(user_id=g.user.id, meeting_id=m.id)
+                           .order_by(ChatMessage.id).all(),
                            open_tasks=Session.query(Task).filter_by(meeting_id=m.id, done=False).count(),
                            lines=analytics.transcript_rows(segs, TZ, JUNK),
                            timeline=analytics.timeline(segs, TZ))
@@ -567,22 +569,88 @@ def extras_generate(rid):
     return redirect(url_for("report", rid=rid) + "#chapters")
 
 
+# ---------- Chat with a meeting ----------
+
+CHAT_MEMORY = 12  # how many earlier lines of the chat the bot is shown
+
+
+@app.template_filter("chat_html")
+def chat_html(text):
+    """A bot answer as safe HTML (the model writes light markdown: lists, bold)."""
+    import html
+    return markdown.markdown(html.escape(text or "", quote=False), extensions=["nl2br", "sane_lists"])
+
+
+def _chat_reply(lines, title, where, live=False):
+    """Answer the posted question, save both sides of the chat, and return JSON for the page."""
+    from . import reports
+    question = " ".join(((request.get_json(silent=True) or {}).get("question") or "").split())[:500]
+    if not question:
+        return jsonify(error="Type a question first."), 400
+    if not lines:
+        return jsonify(error="Nothing has been said in this meeting yet." if live else
+                       "This meeting has no transcript to ask about."), 400
+    past = (Session.query(ChatMessage).filter_by(user_id=g.user.id, **where)
+            .order_by(ChatMessage.id.desc()).limit(CHAT_MEMORY).all())[::-1]
+    try:
+        reply = reports.answer(lines, title, question, [(m.role, m.text) for m in past], live)
+    except Exception as e:
+        print("Chat failed:", e)
+        return jsonify(error="Couldn't get an answer just now. Try again in a minute."), 502
+    Session.add(ChatMessage(user_id=g.user.id, role="user", text=question, **where))
+    Session.add(ChatMessage(user_id=g.user.id, role="bot", text=reply, **where))
+    Session.commit()
+    return jsonify(answer=reply, html=chat_html(reply))
+
+
 @app.post("/report/<int:rid>/ask")
 @login_required
 def ask(rid):
     from . import analytics, reports
     m = _own_meeting(rid)
-    question = " ".join(((request.get_json(silent=True) or {}).get("question") or "").split())[:500]
-    if not question:
-        return jsonify(error="Type a question first."), 400
     lines = reports.clean_lines({"segments": analytics.segments(m)})
-    if not lines:
-        return jsonify(error="This meeting has no transcript to ask about."), 400
+    return _chat_reply(lines, m.title, {"meeting_id": m.id})
+
+
+@app.post("/report/<int:rid>/chat/clear")
+@login_required
+def chat_clear(rid):
+    m = _own_meeting(rid)
+    Session.query(ChatMessage).filter_by(user_id=g.user.id, meeting_id=m.id).delete()
+    Session.commit()
+    return redirect(url_for("report", rid=rid) + "#ask")
+
+
+def _live_key(platform, native):
+    import re
+    if platform not in ("google_meet", "teams", "zoom") or not re.fullmatch(r"[\w.\-]{1,200}", native):
+        abort(404)
+    return f"{platform}:{native}"
+
+
+@app.route("/live/<platform>/<native>")
+@login_required
+@needs_keys
+def live(platform, native):
+    key = _live_key(platform, native)
+    msgs = (Session.query(ChatMessage).filter_by(user_id=g.user.id, meeting_id=None, live_key=key)
+            .order_by(ChatMessage.id).all())
+    return render_template("live.html", platform=platform, native=native, messages=msgs)
+
+
+@app.post("/live/<platform>/<native>/ask")
+@login_required
+@needs_keys
+def live_ask(platform, native):
+    from . import reports
+    key = _live_key(platform, native)
     try:
-        return jsonify(answer=reports.answer(lines, m.title, question))
+        data = vexa.live_transcript(g.user.tx_key, platform, native)
     except Exception as e:
-        print("Ask failed:", e)
-        return jsonify(error="Couldn't get an answer just now. Try again in a minute."), 502
+        print("Live transcript failed:", e)
+        return jsonify(error="Couldn't read this meeting right now. If it has ended, open its report card "
+                             "from the dashboard and chat there."), 502
+    return _chat_reply(reports.clean_lines(data), native, {"meeting_id": None, "live_key": key}, live=True)
 
 
 @app.post("/report/<int:rid>/share")
@@ -907,6 +975,7 @@ def delete_account():
     Session.query(Asked).filter_by(user_id=g.user.id).delete()
     Session.query(Greeted).filter_by(user_id=g.user.id).delete()
     Session.query(Task).filter_by(user_id=g.user.id).delete()
+    Session.query(ChatMessage).filter_by(user_id=g.user.id).delete()
     Session.delete(g.user)
     Session.commit()
     session.clear()

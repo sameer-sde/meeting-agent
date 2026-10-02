@@ -61,7 +61,7 @@ a.row:hover{background:var(--panel2)}
       {% elif upcoming %}<b>Next: {{ upcoming[0].title }}</b><div class="mono">joins {{ upcoming[0].start|local }}</div>
       {% else %}<b>Idle</b><div class="mono">no meetings right now</div>{% endif %}
     </div>
-    {% for b in bots %}<form method="post" action="{{ url_for('stop', platform=b.platform, mid=b.native_meeting_id) }}"><button class="btn stop">Stop bot</button></form>{% endfor %}
+    {% for b in bots %}{% if b.platform and b.native_meeting_id %}<a class="btn ghost" href="{{ url_for('live', platform=b.platform, native=b.native_meeting_id) }}">Chat with this meeting</a>{% endif %}<form method="post" action="{{ url_for('stop', platform=b.platform, mid=b.native_meeting_id) }}"><button class="btn stop">Stop bot</button></form>{% endfor %}
   </div>
 </div>
 

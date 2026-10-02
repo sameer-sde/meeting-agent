@@ -157,6 +157,7 @@ class Meeting(Base):
 
     user = relationship("User", back_populates="meetings")
     tasks = relationship("Task", back_populates="meeting", cascade="all, delete-orphan")
+    chat = relationship("ChatMessage", cascade="all, delete-orphan", order_by="ChatMessage.id")
 
 
 class Task(Base):
@@ -172,6 +173,18 @@ class Task(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
     meeting = relationship("Meeting", back_populates="tasks")
+
+
+class ChatMessage(Base):
+    """One line of a chat with a meeting: a question from the user or an answer from the bot."""
+    __tablename__ = "chat_messages"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    meeting_id: Mapped[int | None] = mapped_column(ForeignKey("meetings.id"), nullable=True)
+    live_key: Mapped[str | None] = mapped_column(String(300), nullable=True)  # "platform:native id" while running
+    role: Mapped[str] = mapped_column(String(8), default="user")  # user | bot
+    text: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class Person(Base):

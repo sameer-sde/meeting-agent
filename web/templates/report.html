@@ -65,10 +65,22 @@ details.panel.pop>summary h2{font-size:26px;margin:0 0 4px}
 .chapter:first-of-type{border-top:0}
 .chapter p{margin:4px 0 0;color:var(--muted);font-size:14px}
 p.more{margin:14px 0 0}
-.qa{border-top:1px solid var(--line);padding:14px 0 2px;margin-top:14px}
-.qa .q{font-weight:600}
-.qa .a{margin:6px 0 0;white-space:pre-wrap;color:var(--ink)}
-.qa .a.wait{color:var(--muted)}
+.msgs{display:flex;flex-direction:column;gap:10px;max-height:460px;overflow:auto;padding:4px 2px}
+.msgs:empty{display:none}
+.msg{max-width:82%;padding:10px 14px;border-radius:14px;font-size:15px;line-height:1.55;overflow-wrap:anywhere}
+.msg.user{align-self:flex-end;background:var(--accent);color:#1B1A17;border-bottom-right-radius:4px}
+.msg.bot{align-self:flex-start;background:var(--panel2);border:1px solid var(--line);border-bottom-left-radius:4px}
+.msg.bot.wait{color:var(--muted)}
+.msg.bot.err{color:#F0C6A8;border-color:#5A3B2A}
+.msg.bot p{margin:0 0 8px}.msg.bot p:last-child{margin:0}
+.msg.bot ul,.msg.bot ol{margin:4px 0 8px;padding-left:20px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 10px}
+.chip{font:13px Manrope,sans-serif;color:var(--ink);background:none;border:1px solid var(--line);border-radius:99px;padding:6px 12px;cursor:pointer}
+.chip:hover{border-color:var(--accent)}
+.send{display:flex;gap:8px}
+.send input{flex:1}
+.clear{margin:10px 0 0}
+.linkbtn{background:none;border:0;padding:0;color:var(--muted);font:13px Manrope,sans-serif;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .rec{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:16px 22px}
 .rec[hidden]{display:none}
 .rec audio{flex:1;min-width:240px;height:40px;color-scheme:dark}
@@ -130,7 +142,7 @@ p.more{margin:14px 0 0}
     <audio id="player" controls preload="none"></audio>
   </section>
   <nav class="tabs" aria-label="Report sections">
-    <a href="#card">Report card</a><a href="#chapters">Chapters</a><a href="#ask">Ask</a><a href="#transcript">Transcript</a><a href="#speakers">Speakers</a><a href="#participation">Participation</a><a href="#mentions">Mentions</a><a href="#attendance">Attendance</a>
+    <a href="#card">Report card</a><a href="#chapters">Chapters</a><a href="#ask">Chat</a><a href="#transcript">Transcript</a><a href="#speakers">Speakers</a><a href="#participation">Participation</a><a href="#mentions">Mentions</a><a href="#attendance">Attendance</a>
   </nav>
 
   <section class="panel" id="card">
@@ -152,14 +164,12 @@ p.more{margin:14px 0 0}
   </section>
 
   <section class="panel" id="ask">
-    <h2>Ask the meeting</h2>
-    <p class="hint">Ask anything about this meeting. The answer comes only from what was said in it.</p>
+    <h2>Chat with this meeting</h2>
+    <p class="hint">Ask anything about this meeting, and ask follow-up questions. The answers come only from what was said in it, and the chat is saved here.</p>
     {% if lines %}
-    <form class="tools" id="askform">
-      <input type="text" id="question" maxlength="500" placeholder="e.g. What did we decide about the release date?" aria-label="Your question" autocomplete="off" required>
-      <button class="btn accent" id="askbtn">Ask</button>
-    </form>
-    <div id="answers" aria-live="polite"></div>
+      {% set chat_ideas = ["Give me a short summary", "What was decided?", "What do I need to do?", "Who said what?"] %}
+      {% set ask_url = url_for('ask', rid=m.id) %}{% set clear_url = url_for('chat_clear', rid=m.id) %}
+      {% include "_chat.html" %}
     {% else %}<p class="empty">No speech was recorded for this meeting.</p>{% endif %}
   </section>
 
@@ -249,24 +259,6 @@ p.more{margin:14px 0 0}
     });
     document.getElementById('lines').classList.toggle('searching', !!q);
     found.textContent = q ? shown + ' of ' + rows.length + ' lines' : rows.length + ' lines';
-  });
-
-  var askform = document.getElementById('askform');
-  if (askform) askform.addEventListener('submit', function (e) {
-    e.preventDefault();
-    var input = document.getElementById('question'), btn = document.getElementById('askbtn'), text = input.value.trim();
-    if (!text) return;
-    var box = document.createElement('div'), q = document.createElement('div'), a = document.createElement('p');
-    box.className = 'qa'; q.className = 'q'; a.className = 'a wait';
-    q.textContent = text; a.textContent = 'Reading the meeting…';
-    box.appendChild(q); box.appendChild(a);
-    var list = document.getElementById('answers'); list.insertBefore(box, list.firstChild);
-    input.value = ''; btn.disabled = true;
-    fetch("{{ url_for('ask', rid=m.id) }}", {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({question: text})})
-      .then(function (r) { return r.json(); })
-      .then(function (d) { a.className = 'a'; a.textContent = d.answer || d.error || 'No answer came back. Try again.'; })
-      .catch(function () { a.className = 'a'; a.textContent = "Couldn't get an answer just now. Try again in a minute."; })
-      .then(function () { btn.disabled = false; });
   });
 
   var player = document.getElementById('player'), shift = 0;

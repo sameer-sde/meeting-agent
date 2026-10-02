@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 import requests
 
 from . import mailer, reports, vexa
-from .models import KV, Asked, Greeted, Meeting, Session, Task, User
+from .models import KV, Asked, ChatMessage, Greeted, Meeting, Session, Task, User
 
 _lock = threading.Lock()
 
@@ -239,6 +239,9 @@ def process_finished(db, user):
             row.report_md = f"Couldn't write this report: {e}"
         db.add(row)
         db.flush()
+        if row.platform and row.native_id:  # a chat started while the meeting was running stays with it
+            db.query(ChatMessage).filter_by(user_id=user.id, meeting_id=None,
+                                            live_key=f"{row.platform}:{row.native_id}").update({"meeting_id": row.id})
         if row.status == "done":
             try:
                 build_extras(db, user, row)

@@ -141,19 +141,32 @@ def make_extras(numbered_lines):
             "tasks": [t for t in data.get("tasks") or [] if isinstance(t, dict)]}
 
 
-ASK_PROMPT = """You answer questions about one meeting, using only its transcript below.
-Speakers may use English, Hindi, Telugu or a mix. Answer in clear, simple English, in a few
-sentences or a short list. Name who said what when it helps. If the transcript does not contain
-the answer, say "That wasn't discussed in this meeting." Do not guess.
-
+CHAT_PROMPT = """You are the notetaker for one meeting. You listened to it, and now you answer
+questions about it in a chat. Use only the transcript below.
+Speakers may use English, Hindi, Telugu or a mix; some lines may be mis-transcribed. Understand the
+meaning and always answer in clear, simple English.
+Keep answers short: a few sentences, or a short list when that is clearer. Name who said what when
+it helps. If the transcript does not contain the answer, say "That wasn't discussed in this
+meeting." Do not guess, and do not use knowledge from outside the meeting.
+{live}
 Meeting title: {title}
 
 TRANSCRIPT:
 {transcript}
 
-QUESTION: {question}
+THE CHAT SO FAR:
+{history}
+
+NEW QUESTION: {question}
+"""
+
+LIVE_NOTE = """This meeting is still going on. The transcript is what has been said up to now, so
+treat it as unfinished and say "so far" where it matters.
 """
 
 
-def answer(lines, title, question):
-    return _llm(ASK_PROMPT.format(title=title, transcript="\n".join(lines), question=question))
+def answer(lines, title, question, history=(), live=False):
+    """Reply to a chat question about a meeting. history: [(role, text)], oldest first."""
+    past = "\n".join(f"{'User' if role == 'user' else 'You'}: {text}" for role, text in history) or "(nothing yet)"
+    return _llm(CHAT_PROMPT.format(live=LIVE_NOTE if live else "", title=title, transcript="\n".join(lines),
+                                   history=past, question=question))
