@@ -1,20 +1,7 @@
 {
-  "regions": [
-    "sin1"
-  ],
+  "regions": ["sin1"],
   "services": {
-    "meeting-agent": {
-      "root": ".",
-      "buildCommand": "pip install -r requirements-web.txt"
-    }
+    "meeting-agent": { "root": ".", "entrypoint": "main:app" }
   },
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": {
-        "type": "service",
-        "service": "meeting-agent"
-      }
-    }
-  ]
+  "rewrites": [{ "source": "/(.*)", "destination": { "service": "meeting-agent" } }]
 }
