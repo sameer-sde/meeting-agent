@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block body %}
+<header class="top">
+  <a class="brand" href="{{ url_for('index') }}">Meeting Agent <i></i></a>
+  <nav>
+    <a class="btn ghost" href="{{ url_for('index') }}">Dashboard</a>
+    <a class="btn ghost" href="{{ url_for('setup') }}">Set up</a>
+    <a class="btn ghost" href="{{ url_for('help_page') }}">Help</a>
+    <a class="btn ghost" href="{{ url_for('settings') }}">Settings</a>
+    {% if g.user.picture %}<img class="avatar" src="{{ g.user.picture }}" alt="{{ g.user.name }}" referrerpolicy="no-referrer">{% endif %}
+    <a class="btn ghost" href="{{ url_for('logout') }}">Sign out</a>
+  </nav>
+</header>
+{% for m in get_flashed_messages() %}<div class="flash" role="status">{{ m }}</div>{% endfor %}
+{% block page %}{% endblock %}
+{% endblock %}

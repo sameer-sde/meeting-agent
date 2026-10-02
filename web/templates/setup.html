@@ -1,0 +1,134 @@
+{% extends "shell.html" %}
+{% block title %}Set up · Meeting Agent{% endblock %}
+{% block css %}
+.wrap{max-width:780px;margin:0 auto;padding:36px 20px 72px}
+.wrap h1{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:42px;line-height:1.1;margin:0 0 8px}
+.wrap h1 em{color:var(--accent)}
+.lead{color:var(--muted);margin:0 0 18px;max-width:60ch}
+.bar{height:6px;background:var(--panel2);border-radius:99px;overflow:hidden;margin:0 0 6px}
+.bar span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--gold))}
+.steps{list-style:none;margin:28px 0 0;padding:0;counter-reset:s}
+.step{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 24px 22px 74px;margin-bottom:16px}
+.step::before{counter-increment:s;content:counter(s);position:absolute;left:22px;top:20px;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-family:Newsreader,Georgia,serif;font-size:19px;border:1px solid var(--line);color:var(--muted)}
+.step.done::before{content:"\2713";background:var(--live);border-color:var(--live);color:#1B1A17;font-family:Manrope,sans-serif;font-size:16px}
+.step.done{border-color:#3E5A48}
+.step h2{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pill{font:600 11px Manrope,sans-serif;border-radius:999px;padding:3px 9px;border:1px solid var(--line);color:var(--muted)}
+.pill.ok{color:var(--live);border-color:#3E5A48;background:#22302A}
+.pill.opt{color:var(--gold);border-color:#5A4B26}
+.how{margin:10px 0 14px;padding-left:20px;color:var(--muted);font-size:14px}
+.how li{margin:5px 0}
+.how b{color:var(--ink);font-weight:600}
+.note{font-size:13px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:12px 0 0}
+.stack{display:grid;gap:8px}
+.saved{color:var(--live);font-size:13px;margin-left:6px}
+.row2{display:grid;grid-template-columns:1fr 130px;gap:12px}
+.flow{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0 0}
+.flow div{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13px;color:var(--muted)}
+.flow b{display:block;color:var(--ink)}
+@media(max-width:640px){.step{padding:20px 18px 20px 18px}.step::before{position:static;margin-bottom:10px}.row2,.flow{grid-template-columns:1fr}.wrap h1{font-size:32px}}
+{% endblock %}
+{% block page %}
+<div class="wrap">
+  <h1>Let's get your bot<br><em>ready for its first meeting.</em></h1>
+  <p class="lead">Five short steps. Only the first two are needed; the rest make it work on its own, even when you're away.</p>
+  <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="{{ total }}" aria-valuenow="{{ done }}"><span style="width:{{ (done / total * 100)|round|int }}%"></span></div>
+  <p class="hint">{{ done }} of {{ total }} done</p>
+
+  <ol class="steps">
+    <li class="step {{ 'done' if steps.vexa }}">
+      <h2>Connect your Vexa account {% if steps.vexa %}<span class="pill ok">Done</span>{% else %}<span class="pill">Required</span>{% endif %}</h2>
+      <p class="hint">Vexa runs the bot that joins your calls. It's free to start, and it keeps your meetings in your own account.</p>
+      <ol class="how">
+        <li>Open <a href="https://vexa.ai" target="_blank" rel="noopener">vexa.ai</a> and <b>sign in with Google</b>. New accounts get free credit (about 6 hours of meetings).</li>
+        <li>Go to your <b>Account</b> page → <b>Create API Key</b> → choose <b>Bot Key</b> → copy it. It starts with <b>vxa_bot_</b>.</li>
+        <li>Click <b>Create API Key</b> again → choose <b>Transcription Key</b> → copy it. It starts with <b>vxa_tx_</b>.</li>
+        <li>Paste both below and save. Each key is shown only once on Vexa, so paste it here right away.</li>
+      </ol>
+      <form method="post" action="{{ url_for('settings') }}" class="stack">
+        <input type="hidden" name="next" value="setup">
+        <input type="password" name="bot_key" autocomplete="off" aria-label="Bot key" placeholder="{{ 'Bot key saved. Paste a new one to replace it' if g.user.bot_key else 'Bot key (vxa_bot_…)' }}">
+        <input type="password" name="tx_key" autocomplete="off" aria-label="Transcription key" placeholder="{{ 'Transcription key saved. Paste a new one to replace it' if g.user.tx_key else 'Transcription key (vxa_tx_…)' }}">
+        <button class="btn accent">Save keys</button>
+      </form>
+      <p class="note">Keep your keys private: anyone with them can use your Vexa credit. We store them encrypted and never show them again.</p>
+    </li>
+
+    <li class="step {{ 'done' if steps.email }}">
+      <h2>Choose who gets the report card {% if steps.email %}<span class="pill ok">Done</span>{% else %}<span class="pill">Required</span>{% endif %}</h2>
+      <p class="hint">After each meeting, the report card is emailed here. Add teammates by separating emails with commas.</p>
+      <form method="post" action="{{ url_for('settings') }}">
+        <input type="hidden" name="next" value="setup">
+        <div class="row2">
+          <input type="text" name="report_to" value="{{ g.user.report_to }}" placeholder="you@gmail.com, teammate@gmail.com" aria-label="Send reports to">
+          <button class="btn accent">Save</button>
+        </div>
+      </form>
+    </li>
+
+    <li class="step {{ 'done' if steps.telegram }}">
+      <h2>Get asked before each meeting {% if steps.telegram %}<span class="pill ok">Done</span>{% else %}<span class="pill opt">Recommended</span>{% endif %}</h2>
+      <p class="hint">A few minutes before a scheduled meeting, Telegram asks you one question: <i>are you joining it yourself?</i></p>
+      <div class="flow">
+        <div><b>Yes, I'll join</b>The bot stays out.</div>
+        <div><b>No, send the bot</b>The bot joins and sends the report.</div>
+        <div><b>No answer</b>The bot joins anyway, so nothing is missed.</div>
+      </div>
+      {% if steps.telegram %}
+        <p class="note">Connected. Change how early we ask in <a href="{{ url_for('settings') }}">Settings</a> (now {{ g.user.ask_minutes }} minutes before).</p>
+      {% elif tg_link %}
+        <ol class="how">
+          <li>Install <b>Telegram</b> on your phone and turn on notifications.</li>
+          <li>Tap <b>Connect Telegram</b> below. It opens our bot.</li>
+          <li>Press <b>Start</b>. You'll get a message saying you're connected.</li>
+          <li>Come back here and refresh this page.</li>
+        </ol>
+        <a class="btn" href="{{ tg_link }}" target="_blank" rel="noopener">Connect Telegram</a>
+      {% else %}
+        <p class="note"><b>The Telegram bot hasn't been added to this app yet.</b> This is a one-time job for whoever runs the app, not for each user:</p>
+        <ol class="how">
+          <li>In Telegram, search <b>@BotFather</b> (blue tick) and press <b>Start</b>.</li>
+          <li>Send <b>/newbot</b>. Give it a name (e.g. Meeting Agent) and a username ending in <b>bot</b> (e.g. myteam_meeting_bot).</li>
+          <li>BotFather replies with a <b>token</b> like 123456:ABC… Keep it private.</li>
+          <li>Add two lines to the app's settings (the <b>.env</b> file on your computer, or the Environment tab on Render):<br>
+            <code>TELEGRAM_BOT_TOKEN=</code><i>the token</i><br><code>TELEGRAM_BOT_USERNAME=</code><i>the username, without @</i></li>
+          <li>Restart the app and refresh this page. A <b>Connect Telegram</b> button appears here.</li>
+        </ol>
+      {% endif %}
+    </li>
+
+    <li class="step {{ 'done' if steps.calendar }}">
+      <h2>Connect your calendar {% if steps.calendar %}<span class="pill ok">Done</span>{% else %}<span class="pill opt">Optional</span>{% endif %}</h2>
+      <p class="hint">Then the bot joins every meeting in your calendar that has a Teams or Meet link, without you pasting anything.</p>
+      {% if cals %}<p class="note">Connected: {% for c in cals %}{{ c.name }}{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+      <ol class="how">
+        <li><b>Google Calendar:</b> open calendar.google.com → ⚙ Settings → under <b>Settings for my calendars</b> click your name → scroll to <b>Integrate calendar</b> → copy <b>Secret address in iCal format</b>.</li>
+        <li><b>Outlook / Microsoft 365:</b> Outlook on the web → Settings → Calendar → <b>Shared calendars</b> → Publish a calendar → <b>Can view all details</b> → Publish → copy the <b>ICS</b> link.</li>
+        <li>Paste it below. Use the <b>secret</b> address, not the public one.</li>
+      </ol>
+      {% if steps.vexa %}
+      <form method="post" action="{{ url_for('cal_connect') }}" class="stack">
+        <input type="hidden" name="next" value="setup">
+        <input type="text" name="name" placeholder="Name, e.g. Work" required aria-label="Calendar name">
+        <input type="text" name="ics_url" placeholder="Secret iCal address" required aria-label="Secret iCal address">
+        <button class="btn ghost">Connect calendar</button>
+      </form>
+      {% else %}<p class="note">Finish step 1 first.</p>{% endif %}
+      <p class="note">Tip: make sure each calendar event has the meeting link in it (Google: "Add Google Meet video conferencing", or paste the link in the location). Calendar changes can take a few minutes to show up.</p>
+    </li>
+
+    <li class="step {{ 'done' if steps.first }}">
+      <h2>Try your first meeting {% if steps.first %}<span class="pill ok">Done</span>{% endif %}</h2>
+      <ol class="how">
+        <li>Start a Google Meet or Teams call and copy its link.</li>
+        <li>On the dashboard, paste it under <b>Join now</b> and press <b>Send bot</b>.</li>
+        <li>Within a minute, <b>Meeting Agent</b> asks to join. Click <b>Admit</b>.</li>
+        <li>Talk for a minute: try a decision, a task with an owner, and some Hindi or Telugu.</li>
+        <li>Press <b>Stop bot</b>. Your report card arrives in a few minutes, on the dashboard and by email.</li>
+      </ol>
+      {% if steps.vexa %}<a class="btn accent" href="{{ url_for('index') }}">Go to dashboard</a>{% endif %}
+    </li>
+  </ol>
+  <p class="hint">Stuck? See <a href="{{ url_for('help_page') }}">Help</a>.</p>
+</div>
+{% endblock %}

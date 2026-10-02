@@ -1,0 +1,68 @@
+{% extends "shell.html" %}
+{% block title %}Help · Meeting Agent{% endblock %}
+{% block css %}
+.wrap{max-width:760px;margin:0 auto;padding:36px 20px 72px}
+.wrap h1{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:42px;margin:0 0 8px}
+.lead{color:var(--muted);margin:0 0 24px}
+details{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 20px;margin-bottom:10px}
+details[open]{border-color:#4A463F}
+summary{cursor:pointer;font-family:Newsreader,Georgia,serif;font-size:20px;list-style:none;display:flex;justify-content:space-between;gap:12px}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";color:var(--accent);font-family:Manrope,sans-serif}
+details[open] summary::after{content:"\2212"}
+details p,details li{color:var(--muted);font-size:14px}
+details ul{padding-left:20px}
+details b{color:var(--ink);font-weight:600}
+h2.group{margin:30px 0 12px;color:var(--accent)}
+{% endblock %}
+{% block page %}
+<div class="wrap">
+  <h1>Help</h1>
+  <p class="lead">Everything about using Meeting Agent. Haven't finished setting up? Go to <a href="{{ url_for('setup') }}">Set up</a>.</p>
+
+  <h2 class="group">Using it</h2>
+  <details open><summary>How does it work?</summary>
+    <p>You give the bot a meeting link (or connect your calendar). It joins the call as a participant called <b>Meeting Agent</b>, listens to everyone, and when the meeting ends it writes a report card: a summary, decisions, action items with owners, and who said what. You get it on the dashboard and by email.</p></details>
+  <details><summary>The bot is waiting in the lobby</summary>
+    <p>Teams and Google Meet treat the bot as a guest, so someone in the meeting has to click <b>Admit</b>. If it never appears, your company may block guests in Teams; ask your Teams admin to allow guest access for meetings.</p></details>
+  <details><summary>Which languages does it understand?</summary>
+    <p>It understands most languages, including Hindi, Telugu and mixed speech like Hinglish. Choose <b>English</b> on the dashboard to get everything translated, or <b>Original</b> to keep each person's own language in the transcript. The report card is always in English.</p></details>
+  <details><summary>How do I stop the bot?</summary>
+    <p>Press <b>Stop bot</b> at the top of the dashboard. If everyone leaves, the bot also leaves on its own after about 10 minutes of silence, but stopping it gets you the report sooner.</p></details>
+  <details><summary>How does the Telegram question work?</summary>
+    <ul><li>A few minutes before each scheduled meeting, our Telegram bot asks if you're joining.</li>
+    <li><b>Yes</b> → the bot stays out. <b>No</b> or <b>no answer</b> → the bot joins.</li>
+    <li>Change how early it asks in Settings. Disconnect any time from Settings.</li></ul></details>
+  <details><summary>Connecting your Telegram</summary>
+    <ul><li>Install <b>Telegram</b> on your phone and allow notifications.</li>
+    <li>Go to <b>Set up</b> → step 3 → tap <b>Connect Telegram</b>. It opens the Meeting Agent bot.</li>
+    <li>Press <b>Start</b>. The bot replies that you're connected. Refresh the Set up page to see it ticked.</li>
+    <li>No notifications? Open the bot's chat → tap its name → make sure it isn't muted.</li></ul></details>
+  <details><summary>Adding the Telegram bot to the app (for whoever runs it)</summary>
+    <p>The app uses one Telegram bot for everyone. Users don't create bots; they only connect to yours.</p>
+    <ul><li>In Telegram, open <b>@BotFather</b> → send <b>/newbot</b> → choose a name and a username ending in <b>bot</b>.</li>
+    <li>Copy the <b>token</b> it gives you. Anyone with it can control the bot, so keep it private.</li>
+    <li>Add <code>TELEGRAM_BOT_TOKEN</code> (the token) and <code>TELEGRAM_BOT_USERNAME</code> (without @) to the app's settings: the <b>.env</b> file locally, or Render's Environment tab online.</li>
+    <li>Restart the app. The Connect Telegram button now appears for users.</li>
+    <li>If the token ever leaks, send <b>/revoke</b> to BotFather, then update the token in the settings.</li></ul></details>
+
+  <h2 class="group">Fixing problems</h2>
+  <details><summary>My calendar meeting isn't under "Coming up"</summary>
+    <ul><li>The event needs a meeting link: in Google Calendar click <b>Add Google Meet video conferencing</b>, or paste the Teams/Meet link into the location.</li>
+    <li>Calendars can take a few minutes to update. Press <b>Sync</b> next to your calendar on the dashboard.</li>
+    <li>Make sure you used the <b>secret</b> iCal address, not the public one.</li></ul></details>
+  <details><summary>No report card arrived</summary>
+    <ul><li>Reports take a few minutes after the bot leaves.</li>
+    <li>If nobody spoke clearly, there's nothing to report, so no card is made.</li>
+    <li>Check your spam folder for the email, and check the address in Settings.</li></ul></details>
+  <details><summary>"Couldn't reach Vexa" or the bot won't send</summary>
+    <ul><li>Check both keys in Settings: the Bot key starts with <b>vxa_bot_</b>, the Transcription key with <b>vxa_tx_</b>.</li>
+    <li>Your Vexa credit may have run out; check it on vexa.ai.</li></ul></details>
+
+  <h2 class="group">Costs and privacy</h2>
+  <details><summary>What does it cost?</summary>
+    <p>Meeting Agent is free. The bot runs on <b>your own</b> Vexa account: new accounts get free credit (about 6 hours), after that Vexa charges per hour of bot time. You can see and top up your balance on vexa.ai.</p></details>
+  <details><summary>Who can see my meetings?</summary>
+    <p>Only you, and the people you add under "Send reports to". Your Vexa keys are stored encrypted. Please tell the people in your meeting that it's being recorded. You can delete your account and all report cards from Settings.</p></details>
+</div>
+{% endblock %}

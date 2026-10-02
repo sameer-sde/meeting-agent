@@ -1,0 +1,66 @@
+{% extends "shell.html" %}
+{% block title %}Settings · Meeting Agent{% endblock %}
+{% block css %}
+.wrap{max-width:720px;margin:0 auto;padding:36px 20px 64px}
+.wrap h1{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:40px;margin:0 0 6px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;margin-top:22px}
+.steps{margin:8px 0 0;padding-left:20px;color:var(--muted);font-size:14px}
+.steps li{margin:4px 0}
+.saved{color:var(--live);font-size:13px;margin-left:6px}
+.row2{display:grid;grid-template-columns:1fr 120px;gap:12px}
+.ok{display:inline-flex;align-items:center;gap:8px;color:var(--live)}
+.ok i{width:8px;height:8px;border-radius:50%;background:var(--live)}
+@media(max-width:600px){.row2{grid-template-columns:1fr}}
+{% endblock %}
+{% block page %}
+<div class="wrap">
+  <h1>Settings</h1>
+  <p class="hint">Signed in as {{ g.user.email }}.</p>
+
+  <form method="post">
+    <div class="card">
+      <h2>Your Vexa keys</h2>
+      <p class="hint">The bot runs on your own free Vexa account, so your meetings stay yours. Keys are stored encrypted.</p>
+      <ol class="steps">
+        <li>Sign in at <a href="https://vexa.ai" target="_blank" rel="noopener">vexa.ai</a> with Google (new accounts get free credit).</li>
+        <li>Account page → Create API Key → <b>Bot Key</b> (starts with vxa_bot_).</li>
+        <li>Create another → <b>Transcription Key</b> (starts with vxa_tx_).</li>
+      </ol>
+      <label class="f" for="bot">Bot key {% if g.user.bot_key %}<span class="saved">saved</span>{% endif %}</label>
+      <input id="bot" type="password" name="bot_key" placeholder="{{ 'Leave blank to keep the saved key' if g.user.bot_key else 'vxa_bot_…' }}" autocomplete="off">
+      <label class="f" for="tx">Transcription key {% if g.user.tx_key %}<span class="saved">saved</span>{% endif %}</label>
+      <input id="tx" type="password" name="tx_key" placeholder="{{ 'Leave blank to keep the saved key' if g.user.tx_key else 'vxa_tx_…' }}" autocomplete="off">
+    </div>
+
+    <div class="card">
+      <h2>Report cards</h2>
+      <p class="hint">Who gets the email after each meeting. Separate addresses with commas.</p>
+      <div class="row2">
+        <div><label class="f" for="to">Send reports to</label><input id="to" type="text" name="report_to" value="{{ g.user.report_to }}"></div>
+        <div><label class="f" for="ask">Ask before (min)</label><input id="ask" type="number" min="2" max="30" name="ask_minutes" value="{{ g.user.ask_minutes }}"></div>
+      </div>
+    </div>
+    <button class="btn accent" style="margin-top:18px">Save settings</button>
+  </form>
+
+  <div class="card">
+    <h2>Telegram check-in</h2>
+    <p class="hint">Before each scheduled meeting we ask on Telegram whether you're joining. Tap No (or don't answer) and the bot goes in your place.</p>
+    {% if g.user.telegram_chat_id %}
+      <p class="ok"><i></i>Connected</p>
+      <form method="post" action="{{ url_for('tg_disconnect') }}"><button class="btn ghost">Disconnect Telegram</button></form>
+    {% elif tg_link %}
+      <a class="btn" href="{{ tg_link }}" target="_blank" rel="noopener">Connect Telegram</a>
+      <p class="hint" style="margin-top:10px">Opens the Meeting Agent bot. Tap Start, then refresh this page.</p>
+    {% else %}
+      <p class="hint">The Telegram bot hasn't been added to this app yet. See <a href="{{ url_for('help_page') }}">Help → Adding the Telegram bot</a>.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Delete account</h2>
+    <p class="hint">Removes your saved keys and report cards from Meeting Agent. Your Vexa account is not affected.</p>
+    <form method="post" action="{{ url_for('delete_account') }}" onsubmit="return confirm('Delete your Meeting Agent account and all report cards?')"><button class="btn danger">Delete my account</button></form>
+  </div>
+</div>
+{% endblock %}

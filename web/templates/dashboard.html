@@ -1,0 +1,122 @@
+{% extends "shell.html" %}
+{% block css %}
+.setupbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:20px 36px 0;padding:14px 18px;border-radius:12px;background:#2B241E;border:1px solid #5A3B2A;color:var(--ink);text-decoration:none}
+.setupbar .track{flex:0 0 160px;height:6px;border-radius:99px;background:var(--panel2);overflow:hidden}
+.setupbar .track span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--gold))}
+@media(max-width:900px){.setupbar{margin:16px 16px 0}.setupbar .track{flex-basis:90px}}
+.hero{padding:40px 36px 8px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
+.hero h1{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:44px;line-height:1.1;margin:0}
+.hero h1 em{color:var(--accent)}
+.hero p{margin:12px 0 0;color:var(--muted);max-width:52ch}
+.status{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 18px;flex-wrap:wrap}
+.dot{width:10px;height:10px;border-radius:50%;background:#5E5A53;flex:none}
+.status.on{border-color:#3E5A48}
+.status.on .dot{background:var(--live);animation:pulse 1.8s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(111,191,142,.55)}70%{box-shadow:0 0 0 10px rgba(111,191,142,0)}100%{box-shadow:0 0 0 0 rgba(111,191,142,0)}}
+@media (prefers-reduced-motion:reduce){.status.on .dot{animation:none}}
+.grid{display:grid;grid-template-columns:340px 1fr;gap:32px;padding:28px 36px 56px}
+.side{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;align-self:start}
+.side section+section{border-top:1px solid var(--line);margin-top:22px;padding-top:22px}
+.stack{display:grid;gap:8px}
+.seg{display:flex;gap:4px;background:var(--panel2);padding:4px;border-radius:10px;border:1px solid var(--line)}
+.seg label{flex:1;text-align:center;padding:7px;border-radius:7px;font-size:13px;cursor:pointer;color:var(--muted);position:relative}
+.seg input{position:absolute;opacity:0;inset:0;cursor:pointer}
+.seg label:has(input:checked){background:var(--gold);color:#1B1A17;font-weight:600}
+.cal{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0;font-size:14px}
+.cal form{display:inline}
+.link{background:none;border:0;color:var(--ink);font:600 13px Manrope,sans-serif;cursor:pointer;padding:4px 6px;text-decoration:underline;text-underline-offset:3px}
+.link.red{color:var(--stop)}
+.section-title{display:flex;align-items:baseline;justify-content:space-between;margin:0 0 12px}
+.list{list-style:none;margin:0 0 40px;padding:0;background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.list li+li{border-top:1px solid var(--line)}
+.row{display:grid;grid-template-columns:62px 1fr auto;gap:16px;align-items:center;padding:14px 18px;color:inherit;text-decoration:none}
+.row.up{grid-template-columns:132px 1fr auto}
+a.row:hover{background:var(--panel2)}
+.day{text-align:center;line-height:1.05}
+.day b{display:block;font-family:Newsreader,Georgia,serif;font-weight:400;font-size:26px;color:var(--accent)}
+.day span{font-size:12px;color:var(--muted)}
+.tag{font-size:12px;border-radius:999px;padding:3px 10px;white-space:nowrap;border:1px solid var(--line);color:var(--muted)}
+.tag.google_meet{color:var(--live);border-color:#3E5A48;background:#22302A}
+.tag.teams{color:var(--teams);border-color:#45467A;background:#26263A}
+.tag.error{color:var(--stop);border-color:#5A3328}
+.empty{color:var(--muted);background:var(--panel);border:1px dashed var(--line);border-radius:16px;padding:18px 20px;margin:0 0 40px}
+@media(max-width:900px){.grid{grid-template-columns:1fr;padding:20px 16px 40px}.hero{padding:28px 16px 4px}.hero h1{font-size:34px}.row.up{grid-template-columns:1fr auto}.row.up .mono{grid-column:1/-1}}
+{% endblock %}
+{% block page %}
+{% if api_error %}<div class="warn">Couldn't reach Vexa right now ({{ api_error }}). Check your keys in Settings if this keeps happening.</div>{% endif %}
+{% if not ready %}<a class="setupbar" href="{{ url_for('setup') }}"><span><b>Start here:</b> add your Vexa keys so the bot can join meetings. We'll walk you through it.</span><span class="btn accent">Set up</span></a>
+{% elif setup_done < setup_total %}<a class="setupbar" href="{{ url_for('setup') }}"><span><b>Finish setting up</b> · {{ setup_done }} of {{ setup_total }} steps done</span><span class="track"><span style="width:{{ (setup_done / setup_total * 100)|round|int }}%"></span></span></a>{% endif %}
+<div class="hero">
+  <div>
+    <h1>You missed the meeting.<br><em>Not a word of it.</em></h1>
+    <p>The bot sits in on your calls, listens in any language, and hands you a report card with what was decided and who owes what.</p>
+  </div>
+  <div class="status {{ 'on' if bots else '' }}">
+    <span class="dot" aria-hidden="true"></span>
+    <div>
+      {% if bots %}<b>Listening in {{ bots|length }} meeting{{ 's' if bots|length > 1 else '' }}</b>
+      <div class="mono">{% for b in bots %}{{ b.native_meeting_id }} ({{ b.status }}){% if not loop.last %}, {% endif %}{% endfor %}</div>
+      {% elif upcoming %}<b>Next: {{ upcoming[0].title }}</b><div class="mono">joins {{ upcoming[0].start|local }}</div>
+      {% else %}<b>Idle</b><div class="mono">no meetings right now</div>{% endif %}
+    </div>
+    {% for b in bots %}<form method="post" action="{{ url_for('stop', platform=b.platform, mid=b.native_meeting_id) }}"><button class="btn stop">Stop bot</button></form>{% endfor %}
+  </div>
+</div>
+
+<div class="grid">
+  <aside class="side">
+    <section>
+      <h2>Join now</h2><p class="hint">Paste a Teams or Google Meet link.</p>
+      <form method="post" action="{{ url_for('send') }}" class="stack">
+        <input type="text" name="link" placeholder="Meeting link" required aria-label="Meeting link">
+        <div class="seg" role="radiogroup" aria-label="Transcript language">
+          <label><input type="radio" name="mode" value="translate" checked>English</label>
+          <label><input type="radio" name="mode" value="transcribe">Original</label>
+        </div>
+        <button class="btn accent">Send bot</button>
+      </form>
+    </section>
+    <section>
+      <h2>Schedule</h2><p class="hint">The bot joins a minute before it starts.</p>
+      <form method="post" action="{{ url_for('schedule') }}" class="stack">
+        <input type="text" name="title" placeholder="Title, e.g. Weekly sync" aria-label="Title">
+        <input type="text" name="link" placeholder="Meeting link" required aria-label="Meeting link">
+        <input type="datetime-local" name="when" required aria-label="Start time">
+        <button class="btn ghost">Schedule meeting</button>
+      </form>
+    </section>
+    <section>
+      <h2>Calendars</h2><p class="hint">Events with a meeting link in them join automatically.</p>
+      {% for c in cals %}
+      <div class="cal"><span>{{ c.name }} <span class="hint">{{ 'auto-join on' if c.auto_join else 'auto-join off' }}</span></span>
+        <span><form method="post" action="{{ url_for('cal_sync', cid=c.id) }}"><button class="link">Sync</button></form><form method="post" action="{{ url_for('cal_delete', cid=c.id) }}"><button class="link red">Remove</button></form></span></div>
+      {% endfor %}
+      <form method="post" action="{{ url_for('cal_connect') }}" class="stack" style="margin-top:12px">
+        <input type="text" name="name" placeholder="Name, e.g. Work" required aria-label="Calendar name">
+        <input type="text" name="ics_url" placeholder="Secret iCal address" required aria-label="Secret iCal address">
+        <button class="btn ghost">Connect calendar</button>
+      </form>
+    </section>
+  </aside>
+
+  <main>
+    <div class="section-title"><h2>Coming up</h2><span class="hint">{{ upcoming|length }} scheduled</span></div>
+    {% if upcoming %}
+    <ul class="list">{% for m in upcoming %}
+      <li class="row up"><span class="mono">{{ m.start|local }}</span><span>{{ m.title }}</span><span class="tag {{ m.platform }}">{{ m.platform|platform_name }}</span></li>
+    {% endfor %}</ul>
+    {% else %}<p class="empty">Nothing scheduled. Add a meeting on the left, or connect a calendar.</p>{% endif %}
+
+    <div class="section-title"><h2>Report cards</h2><span class="hint">{{ reports|length }} total</span></div>
+    {% if reports %}
+    <ul class="list">{% for r in reports %}
+      <li><a class="row" href="{{ url_for('report', rid=r.id) }}">
+        <span class="day"><b>{{ r.created_at|local('%d') }}</b><span>{{ r.created_at|local('%b') }}</span></span>
+        <span>{{ r.title }}</span>
+        {% if r.status == 'error' %}<span class="tag error">failed</span>{% else %}<span class="mono">{{ r.created_at|local('%I:%M %p') }}</span>{% endif %}
+      </a></li>
+    {% endfor %}</ul>
+    {% else %}<p class="empty">Report cards show up here a few minutes after a meeting ends.</p>{% endif %}
+  </main>
+</div>
+{% endblock %}
