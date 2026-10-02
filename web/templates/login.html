@@ -1,39 +1,21 @@
 {% extends "base.html" %}
 {% block title %}{{ {'login':'Sign in','signup':'Create account','verify':'Confirm email','forgot':'Forgot password','reset':'New password'}[mode] }} · Meeting Agent{% endblock %}
 {% block css %}
-.split{display:grid;grid-template-columns:1.1fr 1fr;min-height:100vh}
-.left{background:var(--panel);padding:36px 48px;display:flex;flex-direction:column;justify-content:space-between;gap:32px;border-right:1px solid var(--line)}
+.split{display:grid;grid-template-columns:1.1fr 1fr;min-height:calc(100vh - 56px)}
+.left{background:var(--panel);padding:36px 48px;display:flex;flex-direction:column;gap:56px;border-right:1px solid var(--line)}
 .left h1{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:48px;line-height:1.08;margin:0 0 18px}
 .left h1 em{color:var(--accent)}
 .lead{color:var(--muted);max-width:46ch;margin:0 0 26px}
 
-/* report card preview */
-.rc{background:var(--bg);border:1px solid var(--line);border-radius:16px;max-width:480px;overflow:hidden}
-.rc-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line)}
-.rc-head b{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:19px;display:block}
-.ready{font-size:11px;font-weight:600;color:var(--live);background:#22302A;border:1px solid #3E5A48;border-radius:99px;padding:3px 9px;white-space:nowrap}
-.rc-body{padding:14px 18px;display:grid;gap:14px}
-.label{font-size:11px;color:var(--muted);margin-bottom:6px}
-.av{width:24px;height:24px;border-radius:50%;display:inline-grid;place-items:center;font:700 10px Manrope,sans-serif;color:#1B1A17;flex:none}
-.av.a{background:#9B9CF5}.av.b{background:#E3C26B}.av.c{background:#E08A5A}
-.prow{display:grid;grid-template-columns:24px 1fr 40px;gap:10px;align-items:center;margin:6px 0}
-.ptrack{height:7px;border-radius:99px;background:var(--panel2);overflow:hidden}
-.ptrack span{display:block;height:100%;border-radius:99px}
-.pct{font-size:12px;color:var(--muted);text-align:right}
-.line{display:flex;align-items:center;gap:10px;font-size:13px}
-.tick{width:14px;height:14px;border:1px solid #5E5A53;border-radius:4px;flex:none}
-.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;border:1px solid var(--line);border-radius:99px;padding:2px 9px 2px 2px;white-space:nowrap}
-.chip .av{width:20px;height:20px;font-size:9px}
-.due{margin-left:auto;font:12px 'JetBrains Mono',monospace;color:var(--muted);white-space:nowrap}
-.rc-foot{display:flex;gap:8px;flex-wrap:wrap}
-.pill{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:3px 10px}
-.pill b{color:var(--accent);font-weight:600}
+.why{max-width:540px;margin:34px 0 0;padding:28px 0 0;border-top:1px solid var(--line)}
+.why .eyebrow{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 10px}
 
-.hiw{list-style:none;counter-reset:h;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:22px 0 0;padding:0;max-width:480px}
-.hiw li{counter-increment:h;font-size:13px;color:var(--muted)}
-.hiw li::before{content:counter(h);display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1px solid var(--accent);color:var(--accent);font-size:12px;margin-bottom:6px}
-.hiw b{display:block;color:var(--ink);font-weight:600}
-.made{color:var(--muted);font-size:13px}
+.why h2{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:33px;line-height:1.15;margin:0 0 16px}
+.why p{color:var(--muted);font-size:17.5px;line-height:1.75;margin:0 0 16px}
+.why p b{color:var(--ink);font-weight:600}
+.why .close{font-family:Newsreader,Georgia,serif;font-style:italic;font-size:26px;color:var(--ink);margin:24px 0 0}
+.why .close{line-height:1.3}.why .close em{color:var(--accent);display:block}
+.made{color:var(--muted);font-size:14px;text-align:center;margin:0;padding:16px 20px;border-top:1px solid var(--line);background:var(--panel)}
 .made b{color:var(--ink);font-weight:600}
 .made i{color:var(--accent);font-style:normal}
 
@@ -56,7 +38,7 @@
 .small{color:var(--muted);font-size:13px;margin-top:14px;text-align:center}
 .linkbtn{background:none;border:0;color:var(--accent);font:600 13px Manrope,sans-serif;cursor:pointer;padding:0;display:inline!important;width:auto!important;margin:0!important}
 form.small{display:block}
-@media(max-width:860px){.split{grid-template-columns:1fr}.right{order:-1;padding:28px 20px}.left{border-right:0;border-top:1px solid var(--line);padding:28px 20px}.left h1{font-size:36px}}
+@media(max-width:860px){.why h2{font-size:28px}.why p{font-size:16px}.split{grid-template-columns:1fr}.right{order:-1;padding:28px 20px}.left{border-right:0;border-top:1px solid var(--line);padding:28px 20px}.left h1{font-size:36px}}
 {% endblock %}
 {% block body %}
 <div class="split">
@@ -64,31 +46,16 @@ form.small{display:block}
     <span class="brand">Meeting Agent <i></i></span>
     <div>
       <h1>Skip the call.<br><em>Keep the decisions.</em></h1>
-      <p class="lead">A bot joins your Teams and Google Meet calls, understands Hindi, Telugu and English, and sends you who promised what, even when you weren't there.</p>
+      <p class="lead">A bot joins your Teams and Google Meet calls, understands almost any language, even mixed ones, and sends you who promised what, even when you weren't there.</p>
 
-      <div class="rc" role="img" aria-label="Example report card: participation, a decision, an action item and mentions">
-        <div class="rc-head"><div><b>Weekly sync</b><span class="mono">12:00 PM · Google Meet · 32 min</span></div><span class="ready">Report ready</span></div>
-        <div class="rc-body">
-          <div>
-            <div class="label">Participation</div>
-            <div class="prow"><span class="av a">PS</span><span class="ptrack"><span style="width:46%;background:#9B9CF5"></span></span><span class="pct">46%</span></div>
-            <div class="prow"><span class="av b">RK</span><span class="ptrack"><span style="width:32%;background:#E3C26B"></span></span><span class="pct">32%</span></div>
-            <div class="prow"><span class="av c">SA</span><span class="ptrack"><span style="width:22%;background:#E08A5A"></span></span><span class="pct">22%</span></div>
-          </div>
-          <div><div class="label">Decision</div><div class="line">Launch moves to 18 October</div></div>
-          <div><div class="label">Action item</div>
-            <div class="line"><span class="tick"></span>Fix the payment bug <span class="chip"><span class="av b">RK</span>Ravi</span><span class="due">Fri</span></div></div>
-          <div class="rc-foot"><span class="pill">Ravi mentioned <b>3×</b></span><span class="pill">Minutes of Meeting · PDF</span></div>
-        </div>
-      </div>
-
-      <ol class="hiw" aria-label="How it works">
-        <li><b>Sign in</b>with email or Google</li>
-        <li><b>Add your Vexa keys</b>we walk you through it</li>
-        <li><b>Send the bot</b>or connect your calendar</li>
-      </ol>
+      <section class="why">
+        <p class="eyebrow">Why we built this</p>
+        <h2>Every meeting matters. Not every meeting fits your day.</h2>
+        <p>Calendars collide, priorities shift, and the most important conversations often take place when you are needed elsewhere. What follows is all too familiar: scattered notes, second-hand summaries, and decisions nobody quite remembers making.</p>
+        <p>Meeting Agent attends on your behalf. It captures the entire conversation and delivers a precise, structured record: <b>the decisions taken, the commitments made, and who is accountable for each.</b></p>
+        <p class="close">Be absent from the meeting. <em>Never from the outcome.</em></p>
+      </section>
     </div>
-    <p class="made">Made by <b>Sameer &amp; team</b> <i>●</i> so you never miss a meeting.</p>
   </div>
 
   <div class="right">
@@ -179,4 +146,5 @@ form.small{display:block}
     </div>
   </div>
 </div>
+<p class="made">Made by <b>Sameer &amp; team</b> <i>●</i> so you never miss a meeting.</p>
 {% endblock %}
