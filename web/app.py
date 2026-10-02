@@ -110,7 +110,7 @@ def setup_state(user):
     return steps, cals
 
 
-def _sign_in(email, name="", picture="", sub=None):
+def _sign_in(email, name="", picture="", sub=None, verified_by_google=False):
     db = Session()
     user = None
     if sub:
@@ -121,6 +121,11 @@ def _sign_in(email, name="", picture="", sub=None):
         user = User(email=email, name=name or email.split("@")[0],
                     report_to="" if email.endswith("@localhost") else email)
         db.add(user)
+    if verified_by_google and not user.email_verified:
+        # Someone may have started an email sign-up for this address without confirming it.
+        # Google proves the real owner is here, so drop that unconfirmed password.
+        user.password_hash = None
+        user.email_verified = True
     user.google_sub = sub or user.google_sub
     user.name = name or user.name
     user.picture = picture or user.picture
@@ -133,11 +138,182 @@ def _sign_in(email, name="", picture="", sub=None):
 
 # ---------- Sign in ----------
 
-@app.route("/login")
+CODE_MINUTES = 15
+MAX_CODE_TRIES = 5
+
+
+def _auth_page(mode, **kw):
+    return render_template("login.html", mode=mode, google_on=GOOGLE_ON, local_login=LOCAL_LOGIN, **kw)
+
+
+def _valid_email(e):
+    import re
+    return bool(re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", e or ""))
+
+
+def _send_code(user, purpose):
+    """Make a fresh 6-digit code, store only its hash, and email it."""
+    import hashlib
+    import secrets
+    from datetime import timedelta
+    from . import mailer
+    now = datetime.now(timezone.utc)
+    sent = user.code_sent_at
+    if sent and sent.tzinfo is None:
+        sent = sent.replace(tzinfo=timezone.utc)
+    if sent and (now - sent).total_seconds() < 45 and user.code_purpose == purpose:
+        return "wait"
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    user.code_hash = hashlib.sha256(f"{user.id}:{code}".encode()).hexdigest()
+    user.code_purpose = purpose
+    user.code_expires = now + timedelta(minutes=CODE_MINUTES)
+    user.code_attempts = 0
+    user.code_sent_at = now
+    Session.commit()
+    try:
+        return "sent" if mailer.send_code(user.email, code, purpose) else "no-mail"
+    except Exception as e:
+        print("Couldn't send code:", e)
+        return "error"
+
+
+def _check_code(user, purpose, code):
+    import hashlib
+    import hmac
+    if not user or user.code_purpose != purpose or not user.code_hash:
+        return "Ask for a new code."
+    exp = user.code_expires
+    if exp and exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if not exp or exp < datetime.now(timezone.utc):
+        return "That code has expired. Ask for a new one."
+    if (user.code_attempts or 0) >= MAX_CODE_TRIES:
+        return "Too many wrong tries. Ask for a new code."
+    user.code_attempts = (user.code_attempts or 0) + 1
+    ok = hmac.compare_digest(user.code_hash,
+                             hashlib.sha256(f"{user.id}:{(code or '').strip()}".encode()).hexdigest())
+    if ok:
+        user.code_hash = user.code_purpose = None
+    Session.commit()
+    return None if ok else "That code isn't right. Check the email and try again."
+
+
+def _code_message(result, email):
+    return {
+        "sent": f"We sent a 6-digit code to {email}.",
+        "wait": "A code was sent a moment ago. Check your inbox (and spam) before asking again.",
+        "no-mail": "Email isn't set up on this server, so codes can't be sent. Use Continue with Google.",
+        "error": "We couldn't send the email just now. Try again in a minute.",
+    }[result]
+
+
+@app.route("/login", methods=["GET", "POST"])
 def login():
-    if session.get("uid"):
+    if session.get("uid") and request.method == "GET":
         return redirect(url_for("index"))
-    return render_template("login.html", google_on=GOOGLE_ON, local_login=LOCAL_LOGIN)
+    if request.method == "POST":
+        from werkzeug.security import check_password_hash
+        email = request.form.get("email", "").strip().lower()
+        pw = request.form.get("password", "")
+        user = Session.query(User).filter_by(email=email).first()
+        if not user or not user.password_hash or not check_password_hash(user.password_hash, pw):
+            if user and not user.password_hash and user.google_sub:
+                return _auth_page("login", error="This email signs in with Google. Use Continue with Google, "
+                                  "or set a password with Forgot password.", email=email)
+            return _auth_page("login", error="Email or password is wrong.", email=email)
+        if not user.email_verified:
+            flash(_code_message(_send_code(user, "verify"), email))
+            return redirect(url_for("verify", email=email))
+        _sign_in(user.email)
+        return redirect(url_for("index"))
+    return _auth_page("login")
+
+
+@app.route("/signup", methods=["GET", "POST"])
+def signup():
+    if request.method == "POST":
+        from werkzeug.security import generate_password_hash
+        name = request.form.get("name", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        pw = request.form.get("password", "")
+        form = {"name": name, "email": email}
+        if not name or not _valid_email(email):
+            return _auth_page("signup", error="Enter your name and a valid email.", **form)
+        if len(pw) < 8:
+            return _auth_page("signup", error="Use a password of at least 8 characters.", **form)
+        user = Session.query(User).filter_by(email=email).first()
+        if user and (user.email_verified or user.google_sub):
+            return _auth_page("signup", error="An account with this email already exists. Sign in, "
+                              "or use Forgot password.", **form)
+        if not user:
+            user = User(email=email, name=name, report_to=email, email_verified=False)
+            Session.add(user)
+        user.name = name
+        user.password_hash = generate_password_hash(pw)
+        Session.commit()
+        flash(_code_message(_send_code(user, "verify"), email))
+        return redirect(url_for("verify", email=email))
+    return _auth_page("signup")
+
+
+@app.route("/verify", methods=["GET", "POST"])
+def verify():
+    email = (request.values.get("email") or "").strip().lower()
+    if request.method == "POST":
+        user = Session.query(User).filter_by(email=email).first()
+        err = _check_code(user, "verify", request.form.get("code"))
+        if err:
+            return _auth_page("verify", error=err, email=email)
+        user.email_verified = True
+        Session.commit()
+        _sign_in(user.email)
+        flash("Email confirmed. Welcome to Meeting Agent!")
+        return redirect(url_for("index"))
+    return _auth_page("verify", email=email)
+
+
+@app.post("/verify/resend")
+def verify_resend():
+    email = request.form.get("email", "").strip().lower()
+    user = Session.query(User).filter_by(email=email).first()
+    if user and not user.email_verified:
+        flash(_code_message(_send_code(user, "verify"), email))
+    return redirect(url_for("verify", email=email))
+
+
+@app.route("/forgot", methods=["GET", "POST"])
+def forgot():
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        user = Session.query(User).filter_by(email=email).first()
+        if user:
+            result = _send_code(user, "reset")
+            if result in ("no-mail", "error"):
+                return _auth_page("forgot", error=_code_message(result, email), email=email)
+        flash(f"If an account exists for {email}, we sent it a 6-digit code.")
+        return redirect(url_for("reset", email=email))
+    return _auth_page("forgot")
+
+
+@app.route("/reset", methods=["GET", "POST"])
+def reset():
+    email = (request.values.get("email") or "").strip().lower()
+    if request.method == "POST":
+        from werkzeug.security import generate_password_hash
+        pw = request.form.get("password", "")
+        if len(pw) < 8:
+            return _auth_page("reset", error="Use a password of at least 8 characters.", email=email)
+        user = Session.query(User).filter_by(email=email).first()
+        err = _check_code(user, "reset", request.form.get("code"))
+        if err:
+            return _auth_page("reset", error=err, email=email)
+        user.password_hash = generate_password_hash(pw)
+        user.email_verified = True
+        Session.commit()
+        _sign_in(user.email)
+        flash("Password updated. You're signed in.")
+        return redirect(url_for("index"))
+    return _auth_page("reset", email=email)
 
 
 @app.route("/auth/google")
@@ -156,7 +332,8 @@ def auth_callback():
     if not info.get("email_verified", True):
         flash("Please use a verified Google account.")
         return redirect(url_for("login"))
-    _sign_in(info["email"].lower(), info.get("name", ""), info.get("picture", ""), info.get("sub"))
+    _sign_in(info["email"].lower(), info.get("name", ""), info.get("picture", ""), info.get("sub"),
+             verified_by_google=True)
     return redirect(url_for("index"))
 
 

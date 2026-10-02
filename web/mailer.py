@@ -40,6 +40,48 @@ def _send_brevo(to, subject, text, html, transcript_json):
     r.raise_for_status()
 
 
+def send_code(to, code, purpose):
+    """Email a 6-digit sign-in code. Returns False when email isn't configured."""
+    if not configured():
+        return False
+    what = "confirm your email" if purpose == "verify" else "reset your password"
+    subject = f"Your Meeting Agent code: {code}"
+    text = (f"Use this code to {what}: {code}\n\nIt expires in 15 minutes. "
+            "If you didn't ask for it, you can ignore this email.")
+    html = TEMPLATE.format(
+        subject=f"Use this code to {what}",
+        body=(f'<p style="font:15px Arial,sans-serif;color:#9A958C">Your code</p>'
+              f'<p style="font-size:40px;letter-spacing:10px;margin:6px 0 18px;color:#ECE8E1">{code}</p>'
+              f'<p style="font:14px Arial,sans-serif;color:#9A958C">It expires in 15 minutes. '
+              f"If you didn't ask for it, you can ignore this email.</p>"),
+        footer="Meeting Agent, made by Sameer &amp; team, so you never miss a meeting")
+    if os.environ.get("BREVO_API_KEY"):
+        _send_brevo([to], subject, text, html, None)
+        return True
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = os.environ.get("MAIL_FROM") or os.environ["SMTP_USER"]
+    msg["To"] = to
+    msg.set_content(text)
+    msg.add_alternative(html, subtype="html")
+    _smtp_send(msg)
+    return True
+
+
+def _smtp_send(msg):
+    port = int(os.environ.get("SMTP_PORT", "587"))
+    host = os.environ["SMTP_HOST"]
+    if port == 465:
+        with smtplib.SMTP_SSL(host, port, timeout=30) as s:
+            s.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"])
+            s.send_message(msg)
+    else:
+        with smtplib.SMTP(host, port, timeout=30) as s:
+            s.starttls()
+            s.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"])
+            s.send_message(msg)
+
+
 def send_report(to, subject, report_md, transcript_json=None, link=None):
     if not configured() or not to:
         return False
@@ -59,15 +101,5 @@ def send_report(to, subject, report_md, transcript_json=None, link=None):
     if transcript_json:
         msg.add_attachment(transcript_json.encode(), maintype="application", subtype="json",
                            filename="transcript.json")
-    port = int(os.environ.get("SMTP_PORT", "587"))
-    host = os.environ["SMTP_HOST"]
-    if port == 465:
-        with smtplib.SMTP_SSL(host, port, timeout=30) as s:
-            s.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"])
-            s.send_message(msg)
-    else:
-        with smtplib.SMTP(host, port, timeout=30) as s:
-            s.starttls()
-            s.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"])
-            s.send_message(msg)
+    _smtp_send(msg)
     return True

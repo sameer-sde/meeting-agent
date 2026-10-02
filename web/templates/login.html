@@ -1,29 +1,62 @@
 {% extends "base.html" %}
-{% block title %}Sign in · Meeting Agent{% endblock %}
+{% block title %}{{ {'login':'Sign in','signup':'Create account','verify':'Confirm email','forgot':'Forgot password','reset':'New password'}[mode] }} · Meeting Agent{% endblock %}
 {% block css %}
 .split{display:grid;grid-template-columns:1.1fr 1fr;min-height:100vh}
 .left{background:var(--panel);padding:36px 48px;display:flex;flex-direction:column;justify-content:space-between;gap:32px;border-right:1px solid var(--line)}
 .left h1{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:48px;line-height:1.08;margin:0 0 18px}
 .left h1 em{color:var(--accent)}
-.left p{color:var(--muted);max-width:46ch;margin:0 0 26px}
-.preview{list-style:none;margin:0;padding:0;background:var(--bg);border:1px solid var(--line);border-radius:14px;overflow:hidden;max-width:470px}
-.preview li{display:grid;grid-template-columns:16px 68px 1fr auto;gap:10px;align-items:center;padding:12px 14px;font-size:13px}
-.preview li+li{border-top:1px solid var(--line)}
-.box{width:14px;height:14px;border:1px solid #5E5A53;border-radius:4px}
-.box.done{background:var(--live);border-color:var(--live)}
-.who{display:flex;align-items:center;gap:6px;color:var(--muted)}
-.who i{width:6px;height:6px;border-radius:50%}
-.struck{text-decoration:line-through;color:#6F6B64}
-.right{display:grid;place-items:center;padding:36px}
-.card{width:100%;max-width:360px}
-.card h2{font-size:32px}
-.google{width:100%;margin-top:22px;background:#fff;color:#1F1F1F}
-.hiw{list-style:none;counter-reset:h;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:22px 0 0;padding:0;max-width:470px}
+.lead{color:var(--muted);max-width:46ch;margin:0 0 26px}
+
+/* report card preview */
+.rc{background:var(--bg);border:1px solid var(--line);border-radius:16px;max-width:480px;overflow:hidden}
+.rc-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.rc-head b{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:19px;display:block}
+.ready{font-size:11px;font-weight:600;color:var(--live);background:#22302A;border:1px solid #3E5A48;border-radius:99px;padding:3px 9px;white-space:nowrap}
+.rc-body{padding:14px 18px;display:grid;gap:14px}
+.label{font-size:11px;color:var(--muted);margin-bottom:6px}
+.av{width:24px;height:24px;border-radius:50%;display:inline-grid;place-items:center;font:700 10px Manrope,sans-serif;color:#1B1A17;flex:none}
+.av.a{background:#9B9CF5}.av.b{background:#E3C26B}.av.c{background:#E08A5A}
+.prow{display:grid;grid-template-columns:24px 1fr 40px;gap:10px;align-items:center;margin:6px 0}
+.ptrack{height:7px;border-radius:99px;background:var(--panel2);overflow:hidden}
+.ptrack span{display:block;height:100%;border-radius:99px}
+.pct{font-size:12px;color:var(--muted);text-align:right}
+.line{display:flex;align-items:center;gap:10px;font-size:13px}
+.tick{width:14px;height:14px;border:1px solid #5E5A53;border-radius:4px;flex:none}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;border:1px solid var(--line);border-radius:99px;padding:2px 9px 2px 2px;white-space:nowrap}
+.chip .av{width:20px;height:20px;font-size:9px}
+.due{margin-left:auto;font:12px 'JetBrains Mono',monospace;color:var(--muted);white-space:nowrap}
+.rc-foot{display:flex;gap:8px;flex-wrap:wrap}
+.pill{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:3px 10px}
+.pill b{color:var(--accent);font-weight:600}
+
+.hiw{list-style:none;counter-reset:h;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:22px 0 0;padding:0;max-width:480px}
 .hiw li{counter-increment:h;font-size:13px;color:var(--muted)}
 .hiw li::before{content:counter(h);display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1px solid var(--accent);color:var(--accent);font-size:12px;margin-bottom:6px}
 .hiw b{display:block;color:var(--ink);font-weight:600}
-.or{text-align:center;color:var(--muted);font-size:13px;margin:16px 0}
-@media(max-width:860px){.split{grid-template-columns:1fr}.left{border-right:0;border-bottom:1px solid var(--line);padding:28px 20px}.left h1{font-size:36px}}
+.made{color:var(--muted);font-size:13px}
+.made b{color:var(--ink);font-weight:600}
+.made i{color:var(--accent);font-style:normal}
+
+/* auth card */
+.right{display:grid;place-items:center;padding:36px}
+.card{width:100%;max-width:380px}
+.card h2{font-size:34px;margin-bottom:4px}
+.card form{display:grid;gap:4px}
+.card .btn{width:100%;margin-top:14px}
+.google{background:#fff;color:#1F1F1F}
+.or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13px;margin:18px 0 0}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+.row{display:flex;justify-content:space-between;align-items:baseline}
+.row a,.alt a,.small a{color:var(--accent);text-decoration:none;font-size:13px}
+.alt{text-align:center;color:var(--muted);font-size:14px;margin-top:20px}
+.alt a{font-size:14px;font-weight:600}
+.err{color:#F0A08A;background:#33221D;border:1px solid #5A3328;border-radius:10px;padding:10px 12px;font-size:14px;margin:12px 0 0}
+.ok{color:#B9E3C8;background:#26302A;border:1px solid #33463A;border-radius:10px;padding:10px 12px;font-size:14px;margin:12px 0 0}
+.code{font:600 26px 'JetBrains Mono',monospace !important;letter-spacing:10px;text-align:center}
+.small{color:var(--muted);font-size:13px;margin-top:14px;text-align:center}
+.linkbtn{background:none;border:0;color:var(--accent);font:600 13px Manrope,sans-serif;cursor:pointer;padding:0;display:inline!important;width:auto!important;margin:0!important}
+form.small{display:block}
+@media(max-width:860px){.split{grid-template-columns:1fr}.right{order:-1;padding:28px 20px}.left{border-right:0;border-top:1px solid var(--line);padding:28px 20px}.left h1{font-size:36px}}
 {% endblock %}
 {% block body %}
 <div class="split">
@@ -31,34 +64,117 @@
     <span class="brand">Meeting Agent <i></i></span>
     <div>
       <h1>Skip the call.<br><em>Keep the decisions.</em></h1>
-      <p>A bot joins your Teams and Google Meet calls, understands Hindi, Telugu and English, and sends you who promised what, even when you weren't there.</p>
-      <ul class="preview" aria-label="Example action items from a report card">
-        <li><span class="box"></span><span class="who"><i style="background:var(--teams)"></i>Priya</span><span>Share the revised launch plan</span><span class="mono">03:12</span></li>
-        <li><span class="box"></span><span class="who"><i style="background:var(--gold)"></i>Ravi</span><span>Fix the payment callback bug</span><span class="mono">11:40</span></li>
-        <li><span class="box done"></span><span class="who"><i style="background:var(--accent)"></i>Sameer</span><span class="struck">Connect the team calendar</span><span class="mono">18:05</span></li>
-      </ul>
+      <p class="lead">A bot joins your Teams and Google Meet calls, understands Hindi, Telugu and English, and sends you who promised what, even when you weren't there.</p>
+
+      <div class="rc" role="img" aria-label="Example report card: participation, a decision, an action item and mentions">
+        <div class="rc-head"><div><b>Weekly sync</b><span class="mono">12:00 PM · Google Meet · 32 min</span></div><span class="ready">Report ready</span></div>
+        <div class="rc-body">
+          <div>
+            <div class="label">Participation</div>
+            <div class="prow"><span class="av a">PS</span><span class="ptrack"><span style="width:46%;background:#9B9CF5"></span></span><span class="pct">46%</span></div>
+            <div class="prow"><span class="av b">RK</span><span class="ptrack"><span style="width:32%;background:#E3C26B"></span></span><span class="pct">32%</span></div>
+            <div class="prow"><span class="av c">SA</span><span class="ptrack"><span style="width:22%;background:#E08A5A"></span></span><span class="pct">22%</span></div>
+          </div>
+          <div><div class="label">Decision</div><div class="line">Launch moves to 18 October</div></div>
+          <div><div class="label">Action item</div>
+            <div class="line"><span class="tick"></span>Fix the payment bug <span class="chip"><span class="av b">RK</span>Ravi</span><span class="due">Fri</span></div></div>
+          <div class="rc-foot"><span class="pill">Ravi mentioned <b>3×</b></span><span class="pill">Minutes of Meeting · PDF</span></div>
+        </div>
+      </div>
+
       <ol class="hiw" aria-label="How it works">
-        <li><b>Sign in</b>with your Google account</li>
+        <li><b>Sign in</b>with email or Google</li>
         <li><b>Add your Vexa keys</b>we walk you through it</li>
         <li><b>Send the bot</b>or connect your calendar</li>
       </ol>
     </div>
-    <span class="mono">Your AI meeting notetaker</span>
+    <p class="made">Made by <b>Sameer &amp; team</b> <i>●</i> so you never miss a meeting.</p>
   </div>
+
   <div class="right">
     <div class="card">
-      <h2>Welcome</h2>
-      <p class="hint">Sign in to send the bot and read your report cards.</p>
-      {% for m in get_flashed_messages() %}<p class="hint" style="color:var(--stop)">{{ m }}</p>{% endfor %}
-      {% if google_on %}
-      <a class="btn google" href="{{ url_for('auth_google') }}">
-        <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
-        Continue with Google
-      </a>
+      {% if mode == 'login' %}
+        <h2>Welcome back</h2>
+        <p class="hint">Sign in to send the bot and read your report cards.</p>
+      {% elif mode == 'signup' %}
+        <h2>Create your account</h2>
+        <p class="hint">Free to start. We'll email you a code to confirm it's you.</p>
+      {% elif mode == 'verify' %}
+        <h2>Check your email</h2>
+        <p class="hint">Enter the 6-digit code we sent to <b>{{ email }}</b>.</p>
+      {% elif mode == 'forgot' %}
+        <h2>Forgot password?</h2>
+        <p class="hint">Enter your email and we'll send you a code to set a new one.</p>
+      {% else %}
+        <h2>Set a new password</h2>
+        <p class="hint">Enter the code we emailed to <b>{{ email }}</b> and choose a new password.</p>
       {% endif %}
-      {% if local_login %}
-      {% if google_on %}<p class="or">or</p>{% endif %}
-      <form method="post" action="{{ url_for('auth_local') }}"><button class="btn {{ 'ghost' if google_on else 'accent' }}" style="width:100%;margin-top:{{ '0' if google_on else '22px' }}">Continue on this computer</button></form>
+
+      {% for m in get_flashed_messages() %}<p class="ok" role="status">{{ m }}</p>{% endfor %}
+      {% if error %}<p class="err" role="alert">{{ error }}</p>{% endif %}
+
+      {% if mode == 'login' %}
+      <form method="post" action="{{ url_for('login') }}">
+        <label class="f" for="email">Email</label>
+        <input id="email" type="email" name="email" value="{{ email or '' }}" autocomplete="email" required>
+        <div class="row"><label class="f" for="pw">Password</label><a href="{{ url_for('forgot') }}">Forgot password?</a></div>
+        <input id="pw" type="password" name="password" autocomplete="current-password" required>
+        <button class="btn accent">Sign in</button>
+      </form>
+      {% elif mode == 'signup' %}
+      <form method="post" action="{{ url_for('signup') }}">
+        <label class="f" for="name">Your name</label>
+        <input id="name" type="text" name="name" value="{{ name or '' }}" autocomplete="name" required>
+        <label class="f" for="email">Email</label>
+        <input id="email" type="email" name="email" value="{{ email or '' }}" autocomplete="email" required>
+        <label class="f" for="pw">Password</label>
+        <input id="pw" type="password" name="password" minlength="8" autocomplete="new-password" placeholder="At least 8 characters" required>
+        <button class="btn accent">Create account</button>
+      </form>
+      {% elif mode == 'verify' %}
+      <form method="post" action="{{ url_for('verify') }}">
+        <input type="hidden" name="email" value="{{ email }}">
+        <label class="f" for="code">Code</label>
+        <input id="code" class="code" type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required autofocus>
+        <button class="btn accent">Confirm email</button>
+      </form>
+      <form method="post" action="{{ url_for('verify_resend') }}" class="small"><input type="hidden" name="email" value="{{ email }}">Didn't get it? Check spam, or <button class="linkbtn">send a new code</button>.</form>
+      {% elif mode == 'forgot' %}
+      <form method="post" action="{{ url_for('forgot') }}">
+        <label class="f" for="email">Email</label>
+        <input id="email" type="email" name="email" value="{{ email or '' }}" autocomplete="email" required>
+        <button class="btn accent">Send code</button>
+      </form>
+      {% else %}
+      <form method="post" action="{{ url_for('reset') }}">
+        <input type="hidden" name="email" value="{{ email }}">
+        <label class="f" for="code">Code</label>
+        <input id="code" class="code" type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required autofocus>
+        <label class="f" for="pw">New password</label>
+        <input id="pw" type="password" name="password" minlength="8" autocomplete="new-password" placeholder="At least 8 characters" required>
+        <button class="btn accent">Save password and sign in</button>
+      </form>
+      {% endif %}
+
+      {% if mode in ('login', 'signup') and (google_on or local_login) %}
+        <p class="or">or</p>
+        {% if google_on %}
+        <a class="btn google" href="{{ url_for('auth_google') }}">
+          <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
+          Continue with Google
+        </a>
+        {% endif %}
+        {% if local_login %}
+        <form method="post" action="{{ url_for('auth_local') }}"><button class="btn ghost">Continue on this computer</button></form>
+        {% endif %}
+      {% endif %}
+
+      {% if mode == 'login' %}
+        <p class="alt">New here? <a href="{{ url_for('signup') }}">Create an account</a></p>
+      {% elif mode == 'signup' %}
+        <p class="alt">Already have an account? <a href="{{ url_for('login') }}">Sign in</a></p>
+      {% else %}
+        <p class="alt"><a href="{{ url_for('login') }}">Back to sign in</a></p>
       {% endif %}
     </div>
   </div>
