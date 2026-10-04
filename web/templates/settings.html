@@ -82,6 +82,13 @@ textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
     {% endif %}
   </div>
 
+  {% if is_owner %}
+  <div class="card">
+    <h2>Sign-in page chatbot</h2>
+    <p class="hint">See what visitors asked the chatbot on the sign-in page that it had no written answer for. Only you see this.</p>
+    <a class="btn ghost" href="{{ url_for('help_questions') }}">Open visitor questions</a>
+  </div>
+  {% endif %}
   <div class="card">
     <h2>Delete account</h2>
     <p class="hint">Removes your saved keys and report cards from Meeting Agent. Your Vexa account is not affected.</p>

@@ -16,6 +16,11 @@
 .msg{max-width:86%;padding:9px 13px;border-radius:14px;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
 .msg.user{align-self:flex-end;background:var(--accent);color:#1B1A17;border-bottom-right-radius:4px}
 .msg.bot{white-space:pre-line;align-self:flex-start;background:var(--panel2);border:1px solid var(--line);border-bottom-left-radius:4px}
+.msg.bot.wait{display:flex;gap:5px;align-items:center;padding:14px}
+.msg.bot.wait i{width:7px;height:7px;border-radius:50%;background:var(--muted);animation:cb-dot 1.2s infinite}
+.msg.bot.wait i:nth-child(2){animation-delay:.2s}.msg.bot.wait i:nth-child(3){animation-delay:.4s}
+@keyframes cb-dot{0%,60%,100%{opacity:.25;transform:none}30%{opacity:1;transform:translateY(-3px)}}
+@media (prefers-reduced-motion:reduce){.msg.bot.wait i{animation:none}}
 .chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 10px}
 .chip{font:12px Manrope,sans-serif;color:var(--ink);background:none;border:1px solid var(--line);border-radius:99px;padding:5px 10px;cursor:pointer}
 .chip:hover{border-color:var(--accent)}
@@ -27,7 +32,7 @@
 {% set bot_icon %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v3"/><circle cx="12" cy="2.5" r="1" fill="currentColor"/><rect x="4" y="6" width="16" height="12" rx="4"/><circle cx="9" cy="12" r="1.2" fill="currentColor"/><circle cx="15" cy="12" r="1.2" fill="currentColor"/><path d="M9.5 15.2c1.5 1 3.5 1 5 0"/><path d="M2 11v3M22 11v3"/><path d="M9 18l-1.5 3 4-3"/></svg>{% endset %}
 <div id="cb">
   <section class="cb-win" id="cb-win" aria-label="Meeting Agent help">
-    <div class="cb-head"><span class="cb-face">{{ bot_icon }}</span><div><b>Meeting Agent help</b><span>Quick answers before you sign in</span></div></div>
+    <div class="cb-head"><span class="cb-face">{{ bot_icon }}</span><div><b>Meeting Agent help</b><span>Ask me anything before you sign in</span></div></div>
     <div class="msgs" id="msgs" aria-live="polite">
       <div class="msg bot">Hi 👋 How can I help you?<br>Tap a question, or type your own.</div>
     </div>
@@ -128,6 +133,27 @@
     });
     return best;
   }
+  var NOIDEA = "I don't have an answer for that one right now. I can tell you about Meeting Agent: what it does, how to start, the cost, languages, privacy, the chatbot, recording, tasks, and who built it. Tap a question below, or ask me about one of these.";
+  var log = [], busy = false;                    // the last few turns, sent along so follow-ups make sense
+  function askAI(text) {
+    // No written answer fits: ask the server, which answers with AI inside strict limits.
+    if (busy) return;
+    busy = true;
+    var wait = document.createElement('div'); wait.className = 'msg bot wait'; wait.innerHTML = '<i></i><i></i><i></i>';
+    msgs.appendChild(wait); msgs.scrollTop = msgs.scrollHeight;
+    fetch("{{ url_for('help_ask') }}", {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                        body: JSON.stringify({question: text, history: log.slice(-6)})})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.answer) return d.answer;
+        return d.how === 'limit' ? "I've answered as many open questions as I can for now. I can still answer the ones on the buttons below, and you can ask me more a little later." : NOIDEA;
+      }, function () { return NOIDEA; })
+      .then(function (answer) {
+        busy = false; msgs.removeChild(wait);
+        add('bot', answer, true);
+        log.push({role: 'user', text: text}); log.push({role: 'bot', text: answer});
+      });
+  }
   var lastTopic = null, toldMore = false;
   var MORE = /^\s*(tell me |show me |give me |i want |can i (know|get|have) |explain |say )?(some |a bit |a little )?(more|details?|detail me|elaborate|aur|aur batao|and\??|what else|anything else|continue|go on)\b.{0,25}$|\b(more about (this|it|that)|more (details?|info|information)|tell me more|in detail|explain more|aur batao)\b/i;
   function reply(text, entry) {
@@ -145,11 +171,12 @@
     }
     if (!f) {
       for (var i = 0; i < TALK.length; i++) if (TALK[i][0].test(text) && text.trim().split(/\s+/).length <= 6) { add('bot', TALK[i][1], true); return; }
-      add('bot', "I don't have an answer for that one. I only know about Meeting Agent: what it does, how to start, the cost, languages, privacy, the chatbot, recording, tasks, and who built it. Tap a question below, or ask me about one of these.", true);
+      askAI(text);
       return;
     }
     lastTopic = f; toldMore = false;
     add('bot', f.a, true);
+    log.push({role: 'user', text: text}); log.push({role: 'bot', text: f.a});
   }
   chips.addEventListener('click', function (e) {
     if (e.target.classList.contains('chip')) reply(e.target.textContent, FAQ[e.target.dataset.i]);

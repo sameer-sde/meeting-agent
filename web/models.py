@@ -215,6 +215,16 @@ class Asked(Base):
     answer: Mapped[str | None] = mapped_column(String(8), nullable=True)
 
 
+class HelpQuestion(Base):
+    """A question a visitor typed into the sign-in page chatbot that its written answers didn't cover."""
+    __tablename__ = "help_questions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    text: Mapped[str] = mapped_column(Text, default="")
+    how: Mapped[str] = mapped_column(String(8), default="ai")   # ai | limit | off | error
+    who: Mapped[str] = mapped_column(String(32), default="")    # a hash for counting, never an address
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class Briefed(Base):
     """Scheduled meetings for which the before-meeting brief was already sent."""
     __tablename__ = "briefed"

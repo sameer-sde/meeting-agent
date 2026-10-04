@@ -1066,6 +1066,46 @@ def help_page():
     return render_template("help.html")
 
 
+# ---------- Help chatbot on the sign-in pages ----------
+
+def is_owner(user):
+    """The person who runs this copy of Meeting Agent: OWNER_EMAILS, else the address mail is sent from."""
+    listed = os.environ.get("OWNER_EMAILS") or os.environ.get("MAIL_FROM") or os.environ.get("SMTP_USER") or ""
+    emails = {e.strip(" <>").lower() for e in listed.replace("<", ",").replace(">", ",").split(",") if "@" in e}
+    return bool(user and (user.email or "").lower() in emails)
+
+
+@app.context_processor
+def _owner_flag():
+    return {"is_owner": is_owner(getattr(g, "user", None))}
+
+
+@app.post("/help/ask")
+def help_ask():
+    """A visitor's question that the written answers didn't cover. Open to everyone, so it is capped."""
+    from . import help_bot
+    data = request.get_json(silent=True) or {}
+    ip = (request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.remote_addr or "?")
+    answer, how = help_bot.ask(data.get("question"), data.get("history"), ip)
+    return jsonify(answer=answer, how=how)
+
+
+@app.route("/help/questions", methods=["GET", "POST"])
+@login_required
+def help_questions():
+    """What visitors asked the sign-in chatbot. Only the owner can open this."""
+    from .models import HelpQuestion
+    if not is_owner(g.user):
+        abort(404)
+    if request.method == "POST":
+        Session.query(HelpQuestion).delete()
+        Session.commit()
+        flash("The list was cleared.")
+        return redirect(url_for("help_questions"))
+    rows = Session.query(HelpQuestion).order_by(HelpQuestion.id.desc()).limit(300).all()
+    return render_template("help_questions.html", rows=rows)
+
+
 @app.post("/settings/telegram/disconnect")
 @login_required
 def tg_disconnect():
