@@ -291,11 +291,37 @@ p.more{margin:14px 0 0}
     document.getElementById('reader').classList.add('canplay');
     [].forEach.call(document.querySelectorAll('.playhint'), function (e) { e.hidden = false; });
   }).catch(function () {});
+  // Recordings made live carry no length inside the file, so the browser shows the bar stuck at the
+  // end and can't skip around. Asking it to go to the very end makes it work out the real length;
+  // then we go back to where the listener was.
+  var wantAt = null, fixing = false;
+  function fixLength() {
+    if (isFinite(player.duration) || fixing) return;
+    fixing = true;
+    var back = player.currentTime, resume = !player.paused, timer;
+    function done() {
+      if (!isFinite(player.duration)) return;
+      stop();
+      var go = wantAt !== null;
+      player.currentTime = go ? wantAt : back;
+      wantAt = null;
+      if (resume || go) player.play();
+    }
+    function stop() { fixing = false; clearTimeout(timer); player.removeEventListener('durationchange', done); }
+    player.addEventListener('durationchange', done);
+    timer = setTimeout(function () { if (fixing) { stop(); player.currentTime = back; if (resume) player.play(); } }, 30000);
+    player.currentTime = 1e101;
+  }
+  player.addEventListener('loadedmetadata', fixLength);
+  player.addEventListener('play', fixLength);
+
   document.addEventListener('click', function (e) {
     var b = e.target.closest ? e.target.closest('.jump') : null;
     if (!b || !player.src) return;
-    player.currentTime = Math.max(0, parseFloat(b.dataset.sec) + shift);
-    player.play();
+    var at = Math.max(0, parseFloat(b.dataset.sec) + shift);
+    if (isFinite(player.duration)) { player.currentTime = at; player.play(); return; }
+    wantAt = at;                 // length not known yet: remember the spot, it is used once the length is worked out
+    if (player.readyState > 0) fixLength(); else player.play();
   });
 })();
 </script>
