@@ -19,7 +19,7 @@ from flask import (Flask, abort, flash, g, jsonify, redirect, render_template,  
                    request, session, url_for)
 from werkzeug.middleware.proxy_fix import ProxyFix  # noqa: E402
 
-from . import tasks, vexa  # noqa: E402
+from . import chat, tasks, vexa  # noqa: E402
 from .models import Asked, ChatMessage, Greeted, Meeting, Session, Task, User, init_db  # noqa: E402
 
 app = Flask(__name__)
@@ -573,7 +573,6 @@ def extras_generate(rid):
 
 # ---------- Chat with a meeting ----------
 
-CHAT_MEMORY = 12  # how many earlier lines of the chat the bot is shown
 
 
 @app.template_filter("chat_html")
@@ -584,7 +583,8 @@ def chat_html(text):
 
 
 ALL_KEY = "all"          # the chat about every meeting (the bubble on the dashboard and other pages)
-ALL_MEETINGS = 20        # how many recent report cards that chat reads
+
+app.add_template_filter(chat.bot_html, "bot_html")
 
 
 def _widget(scope, ask_url, clear_url, where, ideas, opened=False):
@@ -609,24 +609,31 @@ def _default_widget():
         return {}
 
 
+def _chat_reply(kind, where, meeting=None, rows=None, material="", empty=None):
+    """Answer the posted message, save both sides of the chat, and return JSON for the page."""
+    from . import reports
+    question = " ".join(((request.get_json(silent=True) or {}).get("question") or "").split())[:500]
+    if not question:
+        return jsonify(error="Type a question first."), 400
+    if not (rows or material):
+        return jsonify(error=empty or ("Nothing has been said in this meeting yet." if kind == "live" else
+                                       "This meeting has no transcript to ask about.")), 400
+    try:
+        msg = chat.reply(g.user, kind, question, where, meeting, rows, material)
+    except reports.Busy:
+        return jsonify(error="I've answered a lot in the last minute and the free AI limit is full. "
+                             "Wait about a minute and ask again."), 429
+    except Exception as e:
+        Session.rollback()
+        print("Chat failed:", repr(e))
+        return jsonify(error="Couldn't get an answer just now. Try again in a minute."), 502
+    return jsonify(answer=msg.text, html=chat.bot_html(msg))
+
+
 @app.post("/chat/ask")
 @login_required
 def chat_all():
-    rows = (Session.query(Meeting).filter_by(user_id=g.user.id, status="done")
-            .order_by(Meeting.created_at.desc()).limit(ALL_MEETINGS).all())
-    _fill_times(rows)
-    blocks = []
-    for m in rows:
-        t = tasks.meeting_times(m)
-        when = t["start"] or local_time(m.created_at, "%d %b %Y")
-        blocks.append(f"=== MEETING: {m.title} | {when}" + (f" | {t['duration']}" if t["duration"] else "")
-                      + f" ===\n{(m.report_md or '')[:6000]}")
-    todo = Session.query(Task).filter_by(user_id=g.user.id, done=False).order_by(Task.id.desc()).limit(60).all()
-    if blocks and todo:
-        blocks.append("=== OPEN TASKS ===\n" + "\n".join(
-            f"- {t.text} (owner: {t.owner or 'not set'}; due: {t.due or 'not set'}; meeting: {t.meeting.title})"
-            for t in todo))
-    return _chat_reply(blocks, None, {"meeting_id": None, "live_key": ALL_KEY},
+    return _chat_reply("all", {"meeting_id": None, "live_key": ALL_KEY}, material=chat.all_material(g.user),
                        empty="You have no report cards yet. Ask me again after your first meeting.")
 
 
@@ -638,29 +645,15 @@ def chat_all_clear():
     return redirect(request.referrer or url_for("index"))
 
 
-def _chat_reply(lines, title, where, live=False, empty=None):
-    """Answer the posted question, save both sides of the chat, and return JSON for the page."""
-    from . import reports
-    question = " ".join(((request.get_json(silent=True) or {}).get("question") or "").split())[:500]
-    if not question:
-        return jsonify(error="Type a question first."), 400
-    if not lines:
-        return jsonify(error=empty or ("Nothing has been said in this meeting yet." if live else
-                                       "This meeting has no transcript to ask about.")), 400
-    past = (Session.query(ChatMessage).filter_by(user_id=g.user.id, **where)
-            .order_by(ChatMessage.id.desc()).limit(CHAT_MEMORY).all())[::-1]
-    try:
-        reply = reports.answer(lines, title, question, [(m.role, m.text) for m in past], live)
-    except reports.Busy:
-        return jsonify(error="I've answered a lot in the last minute and the free AI limit is full. "
-                             "Wait about a minute and ask again."), 429
-    except Exception as e:
-        print("Chat failed:", repr(e))
-        return jsonify(error="Couldn't get an answer just now. Try again in a minute."), 502
-    Session.add(ChatMessage(user_id=g.user.id, role="user", text=question, **where))
-    Session.add(ChatMessage(user_id=g.user.id, role="bot", text=reply, **where))
-    Session.commit()
-    return jsonify(answer=reply, html=chat_html(reply))
+@app.post("/chat/action/<int:mid>/<what>")
+@login_required
+def chat_action(mid, what):
+    """Confirm or Cancel on something the chatbot offered to do."""
+    msg = Session.get(ChatMessage, mid)
+    if not msg or msg.user_id != g.user.id or msg.role != "bot" or what not in ("confirm", "cancel"):
+        abort(404)
+    reload = chat.decide(g.user, msg, what == "confirm")
+    return jsonify(html=chat.bot_html(msg), reload=reload)
 
 
 @app.post("/report/<int:rid>/ask")
@@ -668,8 +661,8 @@ def _chat_reply(lines, title, where, live=False, empty=None):
 def ask(rid):
     from . import analytics, reports
     m = _own_meeting(rid)
-    lines = reports.clean_lines({"segments": analytics.segments(m)})
-    return _chat_reply(lines, m.title, {"meeting_id": m.id})
+    rows = analytics.transcript_rows(analytics.segments(m), TZ, reports.JUNK)
+    return _chat_reply("meeting", {"meeting_id": m.id}, meeting=m, rows=rows)
 
 
 @app.post("/report/<int:rid>/chat/clear")
@@ -705,7 +698,7 @@ def live(platform, native):
 @login_required
 @needs_keys
 def live_ask(platform, native):
-    from . import reports
+    from . import analytics, reports
     key = _live_key(platform, native)
     try:
         data = vexa.live_transcript(g.user.tx_key, platform, native)
@@ -713,7 +706,10 @@ def live_ask(platform, native):
         print("Live transcript failed:", e)
         return jsonify(error="Couldn't read this meeting right now. If it has ended, open its report card "
                              "from the dashboard and chat there."), 502
-    return _chat_reply(reports.clean_lines(data), native, {"meeting_id": None, "live_key": key}, live=True)
+    segs = analytics.normalise([x for x in (data.get("segments") or [])
+                                if isinstance(x, dict) and (x.get("text") or "").strip()])
+    return _chat_reply("live", {"meeting_id": None, "live_key": key},
+                       rows=analytics.transcript_rows(segs, TZ, reports.JUNK))
 
 
 @app.post("/report/<int:rid>/share")

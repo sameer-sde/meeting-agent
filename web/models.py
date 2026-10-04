@@ -184,6 +184,7 @@ class ChatMessage(Base):
     live_key: Mapped[str | None] = mapped_column(String(300), nullable=True)  # "platform:native id" while running
     role: Mapped[str] = mapped_column(String(8), default="user")  # user | bot
     text: Mapped[str] = mapped_column(Text, default="")
+    extra_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # proof lines and any action (bot only)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

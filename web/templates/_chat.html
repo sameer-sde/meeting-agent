@@ -24,6 +24,26 @@
 .msg.bot.err{color:#F0C6A8;border-color:#5A3B2A}
 .msg.bot p{margin:0 0 8px}.msg.bot p:last-child{margin:0}
 .msg.bot ul,.msg.bot ol{margin:4px 0 8px;padding-left:20px}
+.proof{display:grid;gap:6px;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
+.proof-h{font:11px 'JetBrains Mono',monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.src{display:block;text-align:left;width:100%;font:13px/1.45 Manrope,sans-serif;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:7px 9px;cursor:pointer;text-decoration:none}
+.src:hover{border-color:var(--accent)}
+.src .mono{font-size:11px}
+.act{margin-top:10px;padding:10px;border:1px solid #5A3B2A;background:#2B241E;border-radius:10px}
+.act-say{font-weight:600}
+.act-btns{display:flex;gap:8px;margin-top:10px}
+.act-btns .btn{padding:8px 14px;font-size:13px}
+.act-ok{margin-top:8px;color:var(--live)}
+.act-bad{margin-top:8px;color:#F0C6A8}
+.act-off{margin-top:8px;color:var(--muted)}
+.mic{flex:none;width:42px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);cursor:pointer;display:none;place-items:center}
+.mic svg{width:18px;height:18px}
+.mic.on{background:var(--stop);border-color:var(--stop);color:#fff;animation:cb-pulse 1.2s infinite}
+@keyframes cb-pulse{50%{opacity:.6}}
+.cb-voice{margin-left:auto;background:none;border:1px solid var(--line);border-radius:99px;color:var(--muted);font:12px Manrope,sans-serif;padding:4px 10px;cursor:pointer;display:none}
+.cb-voice.on{color:var(--ink);border-color:var(--accent)}
+.hl{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px;transition:outline-color 1.6s}
+@media (prefers-reduced-motion:reduce){.mic.on{animation:none}}
 .chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 10px}
 .chip{font:12px Manrope,sans-serif;color:var(--ink);background:none;border:1px solid var(--line);border-radius:99px;padding:5px 10px;cursor:pointer}
 .chip:hover{border-color:var(--accent)}
@@ -37,14 +57,15 @@
 {% set bot_icon %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v3"/><circle cx="12" cy="2.5" r="1" fill="currentColor"/><rect x="4" y="6" width="16" height="12" rx="4"/><circle cx="9" cy="12" r="1.2" fill="currentColor"/><circle cx="15" cy="12" r="1.2" fill="currentColor"/><path d="M9.5 15.2c1.5 1 3.5 1 5 0"/><path d="M2 11v3M22 11v3"/><path d="M9 18l-1.5 3 4-3"/></svg>{% endset %}
 <div id="cb" class="{{ 'cb-open' if widget.open }}" data-url="{{ widget.ask_url }}">
   <section class="cb-win" id="cb-win" aria-label="Chat with {{ g.user.agent_name }}">
-    <div class="cb-head"><span class="cb-face">{{ bot_icon }}</span><div><b>{{ g.user.agent_name }}</b><span>Answers from {{ widget.scope }}</span></div></div>
+    <div class="cb-head"><span class="cb-face">{{ bot_icon }}</span><div><b>{{ g.user.agent_name }}</b><span>Answers from {{ widget.scope }}</span></div><button type="button" class="cb-voice" id="cb-voice" aria-pressed="false">🔈 Read aloud: off</button></div>
     <div class="msgs" id="msgs" aria-live="polite">
-      <div class="msg bot">Hi {{ g.user.first_name }} 👋 How can I help you?<br>Ask me anything about {{ widget.scope }}.</div>
-      {% for c in widget.messages %}<div class="msg {{ c.role }}">{% if c.role == 'bot' %}{{ c.text|chat_html|safe }}{% else %}{{ c.text }}{% endif %}</div>{% endfor %}
+      <div class="msg bot">Hi {{ g.user.first_name }} 👋 How can I help you?<br>Ask me anything about {{ widget.scope }}, in any language. I can also do things for you, like "mark that task as done" or "send this report to Amir".</div>
+      {% for c in widget.messages %}<div class="msg {{ c.role }}">{% if c.role == 'bot' %}{{ c|bot_html|safe }}{% else %}{{ c.text }}{% endif %}</div>{% endfor %}
     </div>
     <div class="chips" id="chips">{% for q in widget.ideas %}<button type="button" class="chip">{{ q }}</button>{% endfor %}</div>
     {% if widget.clear_url and widget.messages %}<form method="post" action="{{ widget.clear_url }}" class="cb-clear"><button class="linkbtn">Clear this chat</button></form>{% endif %}
     <form class="send" id="chatform">
+      <button type="button" class="mic" id="mic" aria-label="Speak your question"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></button>
       <input type="text" id="question" maxlength="500" placeholder="Ask me anything" aria-label="Your question" autocomplete="off" required>
       <button class="btn accent" id="askbtn">Send</button>
     </form>
@@ -69,6 +90,47 @@
     var d = document.createElement('div'); d.className = 'msg ' + cls; d.textContent = text;
     msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight; return d;
   }
+  // ---- voice: speak the question, hear the answer (Chrome and Edge) ----
+  var Rec = window.SpeechRecognition || window.webkitSpeechRecognition, synth = window.speechSynthesis;
+  var mic = document.getElementById('mic'), voiceBtn = document.getElementById('cb-voice'), readAloud = false;
+  function setRead(on) {
+    readAloud = on;
+    voiceBtn.classList.toggle('on', on);
+    voiceBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    voiceBtn.textContent = (on ? '🔊 Read aloud: on' : '🔈 Read aloud: off');
+    if (!on && synth) synth.cancel();
+  }
+  function say(text) {
+    if (!synth || !readAloud || !text) return;
+    synth.cancel();
+    var u = new SpeechSynthesisUtterance(text.replace(/[*_#`>]/g, ''));
+    if (/[\u0900-\u097F]/.test(text)) u.lang = 'hi-IN'; else if (/[\u0C00-\u0C7F]/.test(text)) u.lang = 'te-IN'; else u.lang = 'en-IN';
+    synth.speak(u);
+  }
+  if (synth) { voiceBtn.style.display = 'block'; voiceBtn.addEventListener('click', function () { setRead(!readAloud); }); }
+  if (Rec) {
+    mic.style.display = 'grid';
+    var rec = null;
+    mic.addEventListener('click', function () {
+      if (rec) { rec.stop(); return; }
+      rec = new Rec(); rec.lang = 'en-IN'; rec.interimResults = true;
+      var heard = '';
+      mic.classList.add('on'); input.placeholder = 'Listening…';
+      rec.onresult = function (e) {
+        heard = [].map.call(e.results, function (r) { return r[0].transcript; }).join(' ');
+        input.value = heard;
+      };
+      rec.onerror = function (e) {
+        if (e.error === 'not-allowed') add('bot err', 'I need permission to use the microphone. Allow it in the address bar and try again.');
+      };
+      rec.onend = function () {
+        rec = null; mic.classList.remove('on'); input.placeholder = 'Ask me anything';
+        if (heard.trim()) { if (synth) setRead(true); send(heard); }
+      };
+      rec.start();
+    });
+  }
+
   function send(text) {
     text = text.trim();
     if (!text || btn.disabled) return;
@@ -81,7 +143,7 @@
       .then(function (r) { return r.json(); })
       .then(function (d) {
         a.className = 'msg bot' + (d.error ? ' err' : ''); a.removeAttribute('aria-label');
-        if (d.html) a.innerHTML = d.html; else a.textContent = d.error || 'No answer came back. Try again.';
+        if (d.html) { a.innerHTML = d.html; say(d.answer); } else a.textContent = d.error || 'No answer came back. Try again.';
       })
       .catch(function () { a.className = 'msg bot err'; a.removeAttribute('aria-label'); a.textContent = "Couldn't get an answer just now. Try again in a minute."; })
       .then(function () { btn.disabled = false; msgs.scrollTop = msgs.scrollHeight; input.focus(); });
@@ -89,6 +151,35 @@
   form.addEventListener('submit', function (e) { e.preventDefault(); send(input.value); });
   document.getElementById('chips').addEventListener('click', function (e) {
     if (e.target.classList.contains('chip')) send(e.target.textContent);
+  });
+
+  // ---- Confirm / Cancel on something the bot offered to do ----
+  msgs.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-do]');
+    if (b) {
+      var box = b.closest('.act'), bubble = b.closest('.msg');
+      [].forEach.call(box.querySelectorAll('button'), function (x) { x.disabled = true; });
+      fetch('{{ url_for("chat_action", mid=0, what="x") }}'.replace('/0/x', '/' + box.dataset.id + '/' + b.dataset.do), {method: 'POST'})
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          bubble.innerHTML = d.html; msgs.scrollTop = msgs.scrollHeight;
+          var done = bubble.querySelector('.act-ok'); if (done) say(done.textContent.replace('✓', ''));
+          if (d.reload) setTimeout(function () { location.reload(); }, 1400);
+        })
+        .catch(function () { [].forEach.call(box.querySelectorAll('button'), function (x) { x.disabled = false; }); });
+      return;
+    }
+    // ---- proof: show the quoted line in the transcript on this page ----
+    var src = e.target.closest('button.src');
+    if (src) {
+      var line = document.querySelector('#lines .jump[data-sec="' + src.dataset.sec + '"]');
+      if (!line) return;
+      var row = line.closest('.line');
+      row.hidden = false;
+      row.scrollIntoView({behavior: 'smooth', block: 'center'});
+      row.classList.add('hl');
+      setTimeout(function () { row.classList.remove('hl'); }, 2600);
+    }
   });
   msgs.scrollTop = msgs.scrollHeight;
 })();

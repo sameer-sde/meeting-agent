@@ -1,0 +1,20 @@
+{{ msg.text|chat_html|safe }}
+{%- if x.sources %}
+<div class="proof"><span class="proof-h">From the meeting</span>
+{% for s in x.sources %}<button type="button" class="jump src" data-sec="{{ s.sec }}" title="Show this line in the transcript"><span class="mono">{{ s.time }}</span> <b>{{ s.speaker }}</b> {{ s.text }}</button>{% endfor %}
+</div>
+{%- endif %}
+{%- if x.links %}
+<div class="proof"><span class="proof-h">From these meetings</span>
+{% for l in x.links %}<a class="src" href="{{ url_for('report', rid=l.id) }}">{{ l.title }}</a>{% endfor %}
+</div>
+{%- endif %}
+{%- if x.action %}
+<div class="act" data-id="{{ msg.id }}">
+  <div class="act-say">{{ x.action.say }}</div>
+  {% if x.action.status == 'pending' %}<div class="act-btns"><button type="button" class="btn accent" data-do="confirm">Confirm</button><button type="button" class="btn ghost" data-do="cancel">Cancel</button></div>
+  {% elif x.action.status == 'done' %}<div class="act-ok">✓ {{ x.action.result }}</div>
+  {% elif x.action.status == 'failed' %}<div class="act-bad">Couldn't do it: {{ x.action.result }}</div>
+  {% else %}<div class="act-off">Cancelled. Nothing was changed.</div>{% endif %}
+</div>
+{%- endif %}

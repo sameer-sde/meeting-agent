@@ -185,53 +185,10 @@ def make_extras(numbered_lines):
             "tasks": [t for t in data.get("tasks") or [] if isinstance(t, dict)]}
 
 
-CHAT_PROMPT = """You are the notetaker for one meeting. You listened to it, and now you answer
-questions about it in a chat. Use only the transcript below.
-Speakers may use English, Hindi, Telugu or a mix; some lines may be mis-transcribed. Understand the
-meaning and always answer in clear, simple English.
-Keep answers short: a few sentences, or a short list when that is clearer. Name who said what when
-it helps. If the transcript does not contain the answer, say "That wasn't discussed in this
-meeting." Do not guess, and do not use knowledge from outside the meeting.
-{live}
-Meeting title: {title}
-
-TRANSCRIPT:
-{transcript}
-
-THE CHAT SO FAR:
-{history}
-
-NEW QUESTION: {question}
-"""
-
-LIVE_NOTE = """This meeting is still going on. The transcript is what has been said up to now, so
-treat it as unfinished and say "so far" where it matters.
-"""
-
-
-ALL_PROMPT = """You are the user's meeting notetaker. Below are the report cards of the user's recent
-meetings (newest first) and their open tasks. Answer the question in a chat, using only this.
-Always answer in clear, simple English. Keep answers short: a few sentences, or a short list when
-that is clearer. Say which meeting something is from (by its title and date) when it helps.
-If the notes do not contain the answer, say "I couldn't find that in your recent meetings."
-Do not guess, and do not use knowledge from outside these meetings.
-
-YOUR MEETINGS:
-{transcript}
-
-THE CHAT SO FAR:
-{history}
-
-NEW QUESTION: {question}
-"""
-
-
-def answer(lines, title, question, history=(), live=False):
-    """Reply to a chat question. history: [(role, text)], oldest first.
-
-    title=None means "all recent meetings": `lines` are then report cards, not transcript lines."""
-    past = "\n".join(f"{'User' if role == 'user' else 'You'}: {text}" for role, text in history) or "(nothing yet)"
-    if title is None:
-        return _llm(ALL_PROMPT.format(transcript="\n\n".join(lines), history=past, question=question), fast=True)
-    return _llm(CHAT_PROMPT.format(live=LIVE_NOTE if live else "", title=title, transcript="\n".join(lines),
-                                   history=past, question=question), fast=True)
+def chat_json(prompt):
+    """One chat turn. The model is asked for JSON; if it sends plain text, that text is the answer."""
+    raw = _llm(prompt, as_json=True, fast=True)
+    data = _json_from(raw)
+    if not isinstance(data.get("answer"), str):
+        data = {"answer": raw}
+    return data
