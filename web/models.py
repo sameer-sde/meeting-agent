@@ -220,7 +220,7 @@ class HelpQuestion(Base):
     __tablename__ = "help_questions"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     text: Mapped[str] = mapped_column(Text, default="")
-    how: Mapped[str] = mapped_column(String(8), default="ai")   # ai | limit | off | error
+    how: Mapped[str] = mapped_column(String(8), default="none")  # none = no written answer yet
     who: Mapped[str] = mapped_column(String(32), default="")    # a hash for counting, never an address
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 

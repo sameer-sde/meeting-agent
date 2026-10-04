@@ -17,14 +17,13 @@ table.t tr:last-child td{border-bottom:0}
 {% block page %}
 <div class="wrap">
   <h1>Visitor questions</h1>
-  <p class="hint">Questions people typed into the chatbot on the sign-in page that its written answers did not cover. Only you can see this page. Use it to spot what people want to know, then add a written answer for the common ones. Only the question text is shown; nothing identifies the visitor.</p>
+  <p class="hint">Questions people typed into the chatbot on the sign-in page that it had no answer for (it told them it can't answer). Only you can see this page. Use it to spot what people want to know, then add a written answer for the common ones. Only the question text is shown; nothing identifies the visitor.</p>
   <div class="top2"><span class="hint">{{ rows|length }} question{{ 's' if rows|length != 1 }}, newest first</span>
     {% if rows %}<form method="post"><button class="btn ghost">Clear the list</button></form>{% endif %}</div>
   <div class="card">
     {% if rows %}
-    <table class="t"><thead><tr><th>When</th><th>Question</th><th>What happened</th></tr></thead><tbody>
-    {% set names = {'ai': 'Answered by AI', 'limit': 'Limit reached', 'off': 'AI is off', 'error': 'AI failed'} %}
-    {% for q in rows %}<tr><td class="mono">{{ q.created_at|local('%d %b, %I:%M %p') }}</td><td>{{ q.text }}</td><td><span class="how {{ q.how }}">{{ names.get(q.how, q.how) }}</span></td></tr>{% endfor %}
+    <table class="t"><thead><tr><th>When</th><th>Question the chatbot could not answer</th></tr></thead><tbody>
+    {% for q in rows %}<tr><td class="mono">{{ q.created_at|local('%d %b, %I:%M %p') }}</td><td>{{ q.text }}</td></tr>{% endfor %}
     </tbody></table>
     {% else %}<p class="none">No questions yet. They appear here when a visitor asks the sign-in chatbot something it has no written answer for.</p>{% endif %}
   </div>

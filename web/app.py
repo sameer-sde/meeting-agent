@@ -1082,12 +1082,17 @@ def _owner_flag():
 
 @app.post("/help/ask")
 def help_ask():
-    """A visitor's question that the written answers didn't cover. Open to everyone, so it is capped."""
+    """The sign-in chatbot had no written answer for this question: save it for the owner to see."""
     from . import help_bot
     data = request.get_json(silent=True) or {}
     ip = (request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.remote_addr or "?")
-    answer, how = help_bot.ask(data.get("question"), data.get("history"), ip)
-    return jsonify(answer=answer, how=how)
+    try:
+        saved = help_bot.save_miss(data.get("question"), ip)
+    except Exception as e:
+        Session.rollback()
+        print("Couldn't save a visitor question:", repr(e))
+        saved = False
+    return jsonify(saved=saved)
 
 
 @app.route("/help/questions", methods=["GET", "POST"])

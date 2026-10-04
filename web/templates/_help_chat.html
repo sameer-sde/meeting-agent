@@ -32,7 +32,7 @@
 {% set bot_icon %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v3"/><circle cx="12" cy="2.5" r="1" fill="currentColor"/><rect x="4" y="6" width="16" height="12" rx="4"/><circle cx="9" cy="12" r="1.2" fill="currentColor"/><circle cx="15" cy="12" r="1.2" fill="currentColor"/><path d="M9.5 15.2c1.5 1 3.5 1 5 0"/><path d="M2 11v3M22 11v3"/><path d="M9 18l-1.5 3 4-3"/></svg>{% endset %}
 <div id="cb">
   <section class="cb-win" id="cb-win" aria-label="Meeting Agent help">
-    <div class="cb-head"><span class="cb-face">{{ bot_icon }}</span><div><b>Meeting Agent help</b><span>Ask me anything before you sign in</span></div></div>
+    <div class="cb-head"><span class="cb-face">{{ bot_icon }}</span><div><b>Meeting Agent help</b><span>Quick answers before you sign in</span></div></div>
     <div class="msgs" id="msgs" aria-live="polite">
       <div class="msg bot">Hi 👋 How can I help you?<br>Tap a question, or type your own.</div>
     </div>
@@ -57,7 +57,7 @@
     {chip: true, q: 'How do I start?', k: ['start', 'begin', 'sign up', 'signup', 'register', 'new account', 'create account', 'create an account', 'how to use', 'how do i use', 'kaise', 'setup', 'set up', 'steps', 'get started'],
      a: 'Press "Create an account" and confirm your email with the 6-digit code we send. The Set up page then walks you through it: add two free keys from Vexa (the service the bot runs on), paste a meeting link, and press Send bot. It takes about 5 minutes.',
      more: 'Step by step:\n1. Create an account and enter the code from your email.\n2. Make a free account on Vexa and create two keys there: a Bot key and a Transcription key.\n3. Paste both keys on the Set up page.\n4. Start or open a Teams or Google Meet meeting and copy its link.\n5. Paste the link in "Join now" and press Send bot.\n6. Let the bot in when it asks to join.\n7. When the meeting ends, the report arrives in a few minutes.\nConnecting Telegram and a calendar is optional.'},
-    {chip: true, q: 'Is it free?', k: ['free', 'price', 'pricing', 'cost', 'costs', 'pay', 'paid', 'payment', 'money', 'charge', 'charges', 'plan', 'paisa', 'rupees', 'kitna', 'subscription'],
+    {chip: true, q: 'Is it free?', k: ['free', 'chatbot free', 'is the chatbot free', 'price', 'pricing', 'cost', 'costs', 'pay', 'paid', 'payment', 'money', 'charge', 'charges', 'plan', 'paisa', 'rupees', 'kitna', 'subscription'],
      a: 'Meeting Agent itself is free. The bot runs on Vexa, and every new Vexa account gets about 4 hours of meetings free. After that, Vexa charges roughly half a dollar per meeting hour, paid to Vexa on your own account.',
      more: 'There is no card to enter and nothing to pay to Meeting Agent. Each person uses their own Vexa account, so nobody shares a bill. When the free Vexa credit is used up, the bot simply stops joining until that Vexa account is topped up; your old reports stay.'},
     {chip: true, q: 'Which meetings and languages?', k: ['language', 'languages', 'hindi', 'telugu', 'english', 'hinglish', 'urdu', 'tamil', 'teams', 'google meet', 'zoom', 'webex', 'which meetings', 'platform', 'platforms', 'support', 'supports', 'supported'],
@@ -69,7 +69,7 @@
     {chip: true, q: 'Who built this?', k: ['who built', 'who made', 'who created', 'who is behind', 'who owns', 'built', 'made by', 'maker', 'developer', 'developed', 'creator', 'owner', 'founder', 'sameer', 'ahmed', 'your team', 'the team', 'kisne', 'banaya'],
      a: 'Meeting Agent was built by Sameer Ahmed and team, so you never miss a meeting. You can see the project on GitHub: github.com/sameer-sde/meeting-agent',
      more: 'Sameer built Meeting Agent so that people who miss a meeting still get the decisions and their tasks. The code is public on GitHub at github.com/sameer-sde/meeting-agent, where you can read how it works.'},
-    {chip: true, q: "I can't sign in", k: ['sign in', 'signin', 'login', 'log in', 'password', 'forgot', 'otp', 'verification code', 'the code', 'cant', "can't", 'cannot', 'not working', 'continue with google'],
+    {chip: true, q: "I can't sign in", k: ['sign in', 'signin', 'login', 'log in', 'password', 'forgot', 'otp', 'verification code', 'the code', 'cant', "can't", 'cannot', 'not working', 'continue with google', 'otp not', 'code not', 'no otp', 'no code', 'otp not received', 'code not received', 'did not get the code', 'didnt get the code', 'google sign in', 'google login'],
      a: 'If you forgot your password, press "Forgot password?" and we email you a 6-digit code. If the code email does not arrive, check your Spam or Junk folder. If "Continue with Google" shows an error, use "Create an account" with your email instead.',
      more: 'The code is valid for 15 minutes and allows 5 tries. You can ask for a new code after 45 seconds. If you first signed in with Google, the same email works with a password too: use "Forgot password?" once to set one.'},
     {q: 'The chatbot', k: ['chatbot', 'chat bot', 'ask questions', 'voice', 'speak', 'talk to', 'assistant'],
@@ -83,12 +83,60 @@
      more: 'Clicking a time in the transcript plays that moment. The Speakers view shows who spoke when across the meeting.'},
     {q: 'Tasks', k: ['task', 'tasks', 'action item', 'action items', 'to do', 'todo', 'follow up', 'promise', 'deadline'],
      a: 'Every action item from every meeting lands on one Tasks page, with its owner and due date, and a tick box to mark it done. For repeat meetings, a promise tracker shows which of last time\'s tasks were done, are in progress, are stuck, or were not mentioned.'},
-    {q: 'How long it takes', k: ['how long', 'how fast', 'how soon', 'when will', 'minutes', 'wait', 'time taken'],
+    {q: 'How long it takes', k: ['how long does', 'how long will', 'how fast', 'how soon', 'when will', 'wait', 'time taken', 'kitni der', 'kitna time', 'kab aati', 'kab aayegi', 'kab milegi'],
      a: 'The report card usually arrives about 2 minutes after the bot leaves the meeting, by email and on your dashboard.'},
     {q: 'Telegram and calendar', k: ['telegram', 'calendar', 'outlook', 'google calendar', 'schedule', 'auto join', 'automatic', 'reminder', 'brief'],
      a: 'Both are optional. With a calendar connected, the bot joins every meeting that has a link. With Telegram connected, it asks before each meeting whether you are joining, and sends a short brief about 10 minutes before: last time\'s decisions and your open tasks.'},
     {q: 'Phone', k: ['phone', 'mobile', 'android', 'iphone', 'ios', 'play store', 'download app', 'install'],
      a: 'There is nothing to install. Meeting Agent is a website and works in the browser on a laptop or a phone.'},
+    {q: 'Do I have to be in the meeting?', k: ['without me', 'not there', 'if i miss', 'i miss', 'missed', 'absent', 'in my place', 'on my behalf', 'do i need to join', 'do i have to join', 'need to attend', 'attend for me', 'do i need to be', 'need to be in', 'have to be in', 'be present', 'have to attend', 'mujhe join'],
+     a: 'No. That is the main idea. The bot attends in your place, and you read the report card afterwards. You can also attend yourself and still let the bot take the notes.'},
+    {q: 'Do people know it is recording?', k: ['consent', 'permission', 'legal', 'allowed', 'is it legal', 'legal to record', 'allowed to record', 'illegal', 'know it is recording', 'secretly', 'secret', 'hidden', 'do people know', 'does everyone know', 'inform'],
+     a: 'The bot never joins secretly. It is a visible participant with a name like "Sameer\'s Notetaker", someone has to let it in, and it says hello in the meeting chat. Whether recording is allowed depends on your company\'s rules and your local law, so tell everyone in the meeting first and get their agreement.'},
+    {q: 'Stopping or removing the bot', k: ['stop the bot', 'remove the bot', 'kick', 'remove it', 'stop recording', 'leave the meeting', 'how to stop', 'pull the bot'],
+     a: 'Press "Stop bot" on your dashboard and it leaves at once. The meeting host can also remove it like any participant. It leaves by itself when the meeting ends, or after about 10 minutes of silence.'},
+    {q: 'The bot did not join', k: ['did not join', 'didnt join', "didn't join", 'not joining', 'bot not coming', 'bot is not', 'not joined', 'bot failed', 'waiting room', 'lobby', 'join nahi', 'nahi aa raha', 'nahi aaya', 'join nhi'],
+     a: 'Check four things: 1) someone admitted the bot from the lobby, 2) the meeting link is complete, 3) your two Vexa keys are saved in Settings, 4) your Vexa account still has credit. If the bot waits about 5 minutes in the lobby without being admitted, it gives up.'},
+    {q: 'The report did not come', k: ['no report', 'report not', 'did not get', 'didnt get', "didn't get", 'not received', 'no email', 'email not', 'mail not', 'where is my report', 'report missing'],
+     a: 'The report takes a few minutes after the bot leaves. Look on your dashboard under Report cards, and check your Spam or Junk folder for the email. If nobody spoke in the meeting, there is nothing to report, so no report card is made.'},
+    {q: 'How accurate is it?', k: ['accurate', 'accuracy', 'correct', 'mistake', 'mistakes', 'wrong', 'reliable', 'errors', 'trust the report'],
+     a: 'It is good on clear audio. Names, numbers and mixed-language sentences can sometimes be heard wrong, like with any speech-to-text. The report only uses what was said and writes "None mentioned" instead of guessing. You can always check the full transcript and the recording.'},
+    {q: 'What is a report card?', k: ['report card', 'summary', 'what do i get', 'what will i get', 'output', 'notes', 'what is in the report'],
+     a: 'The report card is the short version of the meeting: a summary, the key decisions, the action items with owner and deadline, who said what, and the open questions. It comes by email and stays on your dashboard.'},
+    {q: 'Minutes of Meeting', k: ['minutes of meeting', 'meeting minutes', 'mom', 'pdf', 'print', 'formal'],
+     a: 'Every report has a "Minutes of Meeting" button. It opens a formal page with purpose, agenda, discussion, decisions and an action table, which you can save as a PDF from the browser\'s print option.'},
+    {q: 'Attendance and participation', k: ['attendance', 'participation', 'who attended', 'who spoke', 'talk time', 'present', 'speakers', 'mentions', 'mentioned'],
+     a: 'Each report shows who spoke and for how long, the share of talk time per person, how often each name was mentioned, and an attendance sheet you can download. It only knows people who spoke or were invited; a person who stayed silent cannot be detected.'},
+    {q: 'Meeting score', k: ['score', 'rating', 'rate the meeting', 'how good', 'out of 10'],
+     a: 'Each meeting gets a score out of 10. It is simple maths, not an opinion: how many decisions and tasks came out, how balanced the talking was, whether tasks have an owner and a date, and the length. It ends with one tip for next time.'},
+    {q: 'Sharing a report', k: ['share', 'send to team', 'send report', 'forward', 'send to others', 'colleagues', 'send to my team', 'multiple emails'],
+     a: 'Open a report and press "Share with attendees" to email it to people in that meeting or to any address. In Settings you can also list several email addresses that get every report automatically. They do not need an account.'},
+    {q: 'Editing, renaming and deleting', k: ['edit', 'rename', 'change the name', 'change title', 'delete report', 'delete a report', 'delete the report', 'delete meeting', 'delete a meeting', 'delete the meeting', 'remove a meeting', 'remove report'],
+     a: 'You can rename a meeting and you can delete it completely (report, transcript, tasks and chat). The text of a report card cannot be edited, but the Minutes of Meeting can be written again with one button.'},
+    {q: 'When the free credit runs out', k: ['credit', 'credit is finished', 'credit finished', 'runs out', 'run out', 'used up', 'top up', 'recharge', 'after 4 hours', 'after the free'],
+     a: 'When the free Vexa credit is used up, the bot stops joining new meetings until you add credit to your Vexa account. Your old reports stay as they are, and you do not need to change anything in Meeting Agent after topping up.'},
+    {q: 'How long can a meeting be?', k: ['how long can', 'long meeting', 'maximum', 'max length', 'hours', 'time limit', 'duration limit'],
+     a: 'Meeting Agent sets no time limit. A meeting uses your Vexa credit by the hour, so the free credit covers about 4 hours in total.'},
+    {q: 'Does the bot talk?', k: ['does it talk', 'does it speak', 'bot talk', 'bot speak', 'answer in the meeting', 'reply in the meeting', 'interrupt', 'silent'],
+     a: 'No. In the meeting the bot only listens. The one thing it posts is a short hello in the meeting chat when it joins, and you can switch that off in Settings. You ask your questions afterwards, in the chatbot inside the app.'},
+    {q: 'Chat messages and screen sharing', k: ['screen share', 'screen sharing', 'shared screen', 'slides', 'presentation', 'meeting chat', 'chat messages', 'typed messages', 'whiteboard', 'files'],
+     a: 'It captures what is spoken. It does not read messages typed in the meeting chat, and it does not record the shared screen, slides or files.'},
+    {q: 'How is it different from Teams?', k: ['different', 'difference', 'better than', 'compare', 'copilot', 'why not teams', 'why use this', 'otter', 'fireflies', 'instead of'],
+     a: 'It works on both Microsoft Teams and Google Meet, it understands Hindi, Telugu and English mixed together, and it is free to start. It also tracks whether last meeting\'s promises were kept, gives each meeting a score, and puts every task from every meeting on one page.'},
+    {q: 'Who is it for?', k: ['who is it for', 'who can use', 'who should use', 'for companies', 'for students', 'for teams', 'for managers', 'use case', 'useful for'],
+     a: 'Anyone who has more meetings than time: managers who cannot attend every call, team members who miss a standup, and anyone who wants decisions and tasks written down without taking notes.'},
+    {q: 'Is it open source?', k: ['open source', 'opensource', 'source code', 'github', 'repository', 'repo'],
+     a: 'Yes, the code is public on GitHub: github.com/sameer-sde/meeting-agent'},
+    {q: 'Where is my data kept?', k: ['where is my data', 'data stored', 'stored', 'storage', 'how long is', 'kept for', 'database', 'server'],
+     a: 'Your reports and transcripts are kept in Meeting Agent\'s database until you delete them. You can delete one meeting, or your whole account, at any time. The audio is kept by Vexa in your own Vexa account.'},
+    {q: 'Deleting my account', k: ['delete my account', 'delete account', 'close account', 'close my account', 'remove my account', 'unsubscribe'],
+     a: 'After signing in, open Settings and press "Delete my account" at the bottom. That removes your saved keys and all your report cards from Meeting Agent. Your Vexa account is separate and is not affected.'},
+    {q: 'Changing my password or email', k: ['change password', 'change my password', 'reset password', 'new password', 'change email', 'change my email'],
+     a: 'To set a new password, press "Forgot password?" on the sign-in page and enter the 6-digit code we email you. The account email itself cannot be changed; create a new account with the other email instead.'},
+    {q: 'Help and contact', k: ['contact', 'support', 'help me', 'customer care', 'complaint', 'feedback', 'report a bug', 'bug', 'talk to someone', 'phone number', 'email id', 'whatsapp'],
+     a: 'After you sign in, the Help page explains every part of the app. For a problem or an idea, please tell the person who shared Meeting Agent with you, or open an issue on GitHub: github.com/sameer-sde/meeting-agent'},
+    {q: 'Does it need internet?', k: ['offline', 'without internet', 'no internet', 'internet'],
+     a: 'Yes, it needs internet. Meeting Agent is a website and the bot joins online meetings.'},
     {q: 'What is Vexa?', k: ['vexa', 'keys', 'key', 'api key', 'bot key', 'transcription key'],
      a: 'Vexa is the service that puts the bot into the meeting and turns the speech into text. You make a free Vexa account and paste two keys from it on the Set up page. Your keys are stored encrypted and used only for your own meetings.'}
   ];
@@ -136,26 +184,14 @@
     });
     return best;
   }
-  var NOIDEA = "I don't have an answer for that one right now. I can tell you about Meeting Agent: what it does, how to start, the cost, languages, privacy, the chatbot, recording, tasks, and who built it. Tap a question below, or ask me about one of these.";
-  var log = [], busy = false;                    // the last few turns, sent along so follow-ups make sense
-  function askAI(text) {
-    // No written answer fits: ask the server, which answers with AI inside strict limits.
-    if (busy) return;
-    busy = true;
-    var wait = document.createElement('div'); wait.className = 'msg bot wait'; wait.innerHTML = '<i></i><i></i><i></i>';
-    msgs.appendChild(wait); msgs.scrollTop = msgs.scrollHeight;
-    fetch("{{ url_for('help_ask') }}", {method: 'POST', headers: {'Content-Type': 'application/json'},
-                                        body: JSON.stringify({question: text, history: log.slice(-6)})})
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (d.answer) return d.answer;
-        return d.how === 'limit' ? "I've answered as many open questions as I can for now. I can still answer the ones on the buttons below, and you can ask me more a little later." : NOIDEA;
-      }, function () { return NOIDEA; })
-      .then(function (answer) {
-        busy = false; msgs.removeChild(wait);
-        add('bot', answer, true);
-        log.push({role: 'user', text: text}); log.push({role: 'bot', text: answer});
-      });
+  var NOIDEA = "Sorry, I can't answer that. I can only answer questions about Meeting Agent, like what it does, how to start, the cost, languages, privacy, the bot, reports, tasks, or who built it.";
+  function noAnswer(text) {
+    add('bot', NOIDEA, true);
+    // Saved quietly (the text only), so the people who run Meeting Agent can add an answer for it later.
+    try {
+      fetch("{{ url_for('help_ask') }}", {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                          body: JSON.stringify({question: text})}).catch(function () {});
+    } catch (e) {}
   }
   var lastTopic = null, toldMore = false;
   var MORE = /^\s*(tell me |show me |give me |i want |can i (know|get|have) |explain |say )?(some |a bit |a little )?(more|details?|detail me|elaborate|aur|aur batao|and\??|what else|anything else|continue|go on)\b.{0,25}$|\b(more about (this|it|that)|more (details?|info|information)|tell me more|in detail|explain more|aur batao)\b/i;
@@ -168,18 +204,17 @@
         lastTopic = topic; toldMore = true;
         add('bot', topic.more, true);
       } else {
-        add('bot', 'That is all I have on that. You can ask about: what it does, how to start, the cost, languages, privacy, the chatbot, recording, tasks, Telegram and calendar, or who built it.', true);
+        add('bot', 'That is all I have on that. You can ask about: what it does, how to start, the cost, languages, privacy, the bot, reports, the chatbot, recording, tasks, Telegram and calendar, or who built it.', true);
       }
       return;
     }
     if (!f) {
       for (var i = 0; i < TALK.length; i++) if (TALK[i][0].test(text) && text.trim().split(/\s+/).length <= 6) { add('bot', TALK[i][1], true); return; }
-      askAI(text);
+      noAnswer(text);
       return;
     }
     lastTopic = f; toldMore = false;
     add('bot', f.a, true);
-    log.push({role: 'user', text: text}); log.push({role: 'bot', text: f.a});
   }
   chips.addEventListener('click', function (e) {
     if (e.target.classList.contains('chip')) reply(e.target.textContent, FAQ[e.target.dataset.i]);
