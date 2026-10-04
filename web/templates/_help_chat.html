@@ -43,19 +43,19 @@
 (function () {
   // Each entry: the question shown as a button, words that point to it when typed, and the answer.
   var FAQ = [
-    {q: 'What is Meeting Agent?', k: ['what', 'meeting agent', 'about', 'do', 'kya', 'feature'],
+    {q: 'What is Meeting Agent?', k: ['what is', 'what does', 'what can', 'meeting agent', 'this app', 'this site', 'feature', 'explain', 'kya hai', 'kya karta'],
      a: 'A bot joins your Microsoft Teams or Google Meet meeting and listens. After the meeting you get a report card: summary, decisions, action items and who said what. You also get the recording, a transcript you can search, a tasks list, and a chatbot you can ask about the meeting.'},
-    {q: 'How do I start?', k: ['start', 'begin', 'sign up', 'signup', 'register', 'account', 'create', 'use', 'kaise', 'setup', 'set up'],
+    {q: 'How do I start?', k: ['start', 'begin', 'sign up', 'signup', 'register', 'new account', 'create account', 'create an account', 'how to use', 'how do i use', 'kaise', 'setup', 'set up', 'steps'],
      a: 'Press "Create an account" and confirm your email with the 6-digit code we send. The Set up page then walks you through it: add two free keys from Vexa (the service the bot runs on), paste a meeting link, and press Send bot. It takes about 5 minutes.'},
-    {q: 'Is it free?', k: ['free', 'price', 'cost', 'pay', 'paid', 'money', 'charge', 'plan', 'paisa'],
+    {q: 'Is it free?', k: ['free', 'price', 'pricing', 'cost', 'pay', 'paid', 'money', 'charge', 'charges', 'plan', 'paisa', 'rupees', 'kitna'],
      a: 'Meeting Agent itself is free. The bot runs on Vexa, and every new Vexa account gets about 4 hours of meetings free. After that, Vexa charges roughly half a dollar per meeting hour, paid to Vexa on your own account.'},
-    {q: 'Which meetings and languages?', k: ['language', 'hindi', 'telugu', 'english', 'teams', 'meet', 'zoom', 'google', 'which', 'support'],
+    {q: 'Which meetings and languages?', k: ['language', 'languages', 'hindi', 'telugu', 'english', 'hinglish', 'teams', 'google meet', 'zoom', 'which meetings', 'platform', 'platforms', 'support', 'supports'],
      a: 'It works with Microsoft Teams and Google Meet. It understands Hindi, Telugu and English, even when they are mixed in one sentence, and writes the report in English. The chatbot can answer in the language you ask in.'},
-    {q: 'Is my meeting private?', k: ['private', 'privacy', 'safe', 'secure', 'security', 'data', 'confidential', 'who can see', 'delete'],
+    {q: 'Is my meeting private?', k: ['private', 'privacy', 'safe', 'secure', 'security', 'my data', 'confidential', 'who can see', 'delete', 'encrypted'],
      a: 'Only you can see your meetings, and your Vexa keys are stored encrypted. You can delete any meeting, or your whole account, at any time. The bot joins as a visible participant, so everyone in the call knows it is there. The audio is handled by Vexa and the report is written with Google Gemini, so please do not use it for confidential meetings.'},
-    {q: 'Who built this?', k: ['who built', 'who made', 'built', 'made by', 'maker', 'developer', 'developed', 'created', 'creator', 'owner', 'founder', 'sameer', 'kisne', 'banaya'],
-     a: 'Meeting Agent was built by Sameer Ahmed and team, so you never miss a meeting.'},
-    {q: "I can't sign in", k: ['sign in', 'signin', 'login', 'log in', 'password', 'forgot', 'code', 'otp', 'cant', "can't", 'not working', 'error'],
+    {q: 'Who built this?', k: ['who built', 'who made', 'who created', 'who is', 'built', 'made by', 'maker', 'developer', 'developed', 'creator', 'owner', 'founder', 'sameer', 'ahmed', 'team', 'kisne', 'banaya', 'kaun'],
+     a: 'Meeting Agent was built by Sameer Ahmed and team, so you never miss a meeting. You can see the project on GitHub: github.com/sameer-sde/meeting-agent'},
+    {q: "I can't sign in", k: ['sign in', 'signin', 'login', 'log in', 'password', 'forgot', 'otp', 'verification code', 'the code', 'cant', "can't", 'cannot', 'not working', 'continue with google'],
      a: 'If you forgot your password, press "Forgot password?" and we email you a 6-digit code. If the code email does not arrive, check your Spam or Junk folder. If "Continue with Google" shows an error, use "Create an account" with your email instead.'}
   ];
   var cb = document.getElementById('cb'), toggle = document.getElementById('cb-btn'), msgs = document.getElementById('msgs');
@@ -82,15 +82,22 @@
     }, 18)};
   }
   function find(text) {
-    var t = ' ' + text.toLowerCase() + ' ', best = null, top = 0;
+    // Whole words only, and a longer matching phrase counts for more, so "about sameer" finds
+    // "Who built this?" and not whichever answer happens to come first.
+    var t = ' ' + text.toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ') + ' ', best = null, top = 0;
     FAQ.forEach(function (f) {
-      var n = f.k.filter(function (w) { return t.indexOf(w) > -1; }).length;
+      var n = 0;
+      f.k.forEach(function (w) { if (t.indexOf(' ' + w + ' ') > -1) n += w.length; });
       if (n > top) { top = n; best = f; }
     });
     return best;
   }
   function reply(text, entry) {
     add('user', text);
+    if (!entry && /^\s*(hi|hii+|hello|hey|namaste|salam|assalam\w*|good (morning|evening|afternoon))\b/i.test(text) && text.trim().split(/\s+/).length <= 3) {
+      add('bot', 'Hi! Ask me anything about Meeting Agent, or tap one of the questions below.', true);
+      return;
+    }
     var f = entry || find(text);
     add('bot', f ? f.a : "I can answer simple questions about Meeting Agent here: what it is, who built it, how to start, the cost, languages, privacy and sign-in. Try one of the buttons below. Once you sign in, I can answer questions about your own meetings.", true);
   }
