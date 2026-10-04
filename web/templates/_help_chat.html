@@ -15,7 +15,7 @@
 .msgs{flex:1;display:flex;flex-direction:column;gap:10px;overflow:auto;padding:14px}
 .msg{max-width:86%;padding:9px 13px;border-radius:14px;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
 .msg.user{align-self:flex-end;background:var(--accent);color:#1B1A17;border-bottom-right-radius:4px}
-.msg.bot{align-self:flex-start;background:var(--panel2);border:1px solid var(--line);border-bottom-left-radius:4px}
+.msg.bot{white-space:pre-line;align-self:flex-start;background:var(--panel2);border:1px solid var(--line);border-bottom-left-radius:4px}
 .chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 10px}
 .chip{font:12px Manrope,sans-serif;color:var(--ink);background:none;border:1px solid var(--line);border-radius:99px;padding:5px 10px;cursor:pointer}
 .chip:hover{border-color:var(--accent)}
@@ -42,25 +42,61 @@
 <script>
 (function () {
   // Each entry: the question shown as a button, words that point to it when typed, and the answer.
+  // q: shown as a button when chip is true.  k: words and phrases that point to this answer.
+  // a: the answer.  more: what to say when the visitor then asks for "more".
   var FAQ = [
-    {q: 'What is Meeting Agent?', k: ['what is', 'what does', 'what can', 'meeting agent', 'this app', 'this site', 'feature', 'explain', 'kya hai', 'kya karta'],
-     a: 'A bot joins your Microsoft Teams or Google Meet meeting and listens. After the meeting you get a report card: summary, decisions, action items and who said what. You also get the recording, a transcript you can search, a tasks list, and a chatbot you can ask about the meeting.'},
-    {q: 'How do I start?', k: ['start', 'begin', 'sign up', 'signup', 'register', 'new account', 'create account', 'create an account', 'how to use', 'how do i use', 'kaise', 'setup', 'set up', 'steps'],
-     a: 'Press "Create an account" and confirm your email with the 6-digit code we send. The Set up page then walks you through it: add two free keys from Vexa (the service the bot runs on), paste a meeting link, and press Send bot. It takes about 5 minutes.'},
-    {q: 'Is it free?', k: ['free', 'price', 'pricing', 'cost', 'pay', 'paid', 'money', 'charge', 'charges', 'plan', 'paisa', 'rupees', 'kitna'],
-     a: 'Meeting Agent itself is free. The bot runs on Vexa, and every new Vexa account gets about 4 hours of meetings free. After that, Vexa charges roughly half a dollar per meeting hour, paid to Vexa on your own account.'},
-    {q: 'Which meetings and languages?', k: ['language', 'languages', 'hindi', 'telugu', 'english', 'hinglish', 'teams', 'google meet', 'zoom', 'which meetings', 'platform', 'platforms', 'support', 'supports'],
-     a: 'It works with Microsoft Teams and Google Meet. It understands Hindi, Telugu and English, even when they are mixed in one sentence, and writes the report in English. The chatbot can answer in the language you ask in.'},
-    {q: 'Is my meeting private?', k: ['private', 'privacy', 'safe', 'secure', 'security', 'my data', 'confidential', 'who can see', 'delete', 'encrypted'],
-     a: 'Only you can see your meetings, and your Vexa keys are stored encrypted. You can delete any meeting, or your whole account, at any time. The bot joins as a visible participant, so everyone in the call knows it is there. The audio is handled by Vexa and the report is written with Google Gemini, so please do not use it for confidential meetings.'},
-    {q: 'Who built this?', k: ['who built', 'who made', 'who created', 'who is', 'built', 'made by', 'maker', 'developer', 'developed', 'creator', 'owner', 'founder', 'sameer', 'ahmed', 'team', 'kisne', 'banaya', 'kaun'],
-     a: 'Meeting Agent was built by Sameer Ahmed and team, so you never miss a meeting. You can see the project on GitHub: github.com/sameer-sde/meeting-agent'},
-    {q: "I can't sign in", k: ['sign in', 'signin', 'login', 'log in', 'password', 'forgot', 'otp', 'verification code', 'the code', 'cant', "can't", 'cannot', 'not working', 'continue with google'],
-     a: 'If you forgot your password, press "Forgot password?" and we email you a 6-digit code. If the code email does not arrive, check your Spam or Junk folder. If "Continue with Google" shows an error, use "Create an account" with your email instead.'}
+    {chip: true, q: 'What is Meeting Agent?', k: ['meeting agent', 'this app', 'this site', 'this website', 'this tool', 'feature', 'features', 'overview', 'what is this', 'what is it', 'what does it do', 'what does this do', 'what can it do', 'what it does', 'ye kya hai', 'yeh kya hai', 'kya hai ye', 'kya karta hai ye'],
+     a: 'A bot joins your Microsoft Teams or Google Meet meeting and listens. After the meeting you get a report card: summary, decisions, action items and who said what. You also get the recording, a transcript you can search, a tasks list, and a chatbot you can ask about the meeting.',
+     more: 'Here is everything a meeting gives you:\n• Report card by email and on your dashboard\n• Minutes of Meeting you can print as a PDF\n• Full transcript with search, and the audio recording\n• Chapters: the meeting split into topics\n• Who spoke how much, and whose name was mentioned\n• Attendance sheet you can download\n• A meeting score out of 10\n• Tasks page for every action item, and a tracker for promises made last time\n• A chatbot that answers questions about the meeting, by typing or voice'},
+    {chip: true, q: 'How do I start?', k: ['start', 'begin', 'sign up', 'signup', 'register', 'new account', 'create account', 'create an account', 'how to use', 'how do i use', 'kaise', 'setup', 'set up', 'steps', 'get started'],
+     a: 'Press "Create an account" and confirm your email with the 6-digit code we send. The Set up page then walks you through it: add two free keys from Vexa (the service the bot runs on), paste a meeting link, and press Send bot. It takes about 5 minutes.',
+     more: 'Step by step:\n1. Create an account and enter the code from your email.\n2. Make a free account on Vexa and create two keys there: a Bot key and a Transcription key.\n3. Paste both keys on the Set up page.\n4. Start or open a Teams or Google Meet meeting and copy its link.\n5. Paste the link in "Join now" and press Send bot.\n6. Let the bot in when it asks to join.\n7. When the meeting ends, the report arrives in a few minutes.\nConnecting Telegram and a calendar is optional.'},
+    {chip: true, q: 'Is it free?', k: ['free', 'price', 'pricing', 'cost', 'costs', 'pay', 'paid', 'payment', 'money', 'charge', 'charges', 'plan', 'paisa', 'rupees', 'kitna', 'subscription'],
+     a: 'Meeting Agent itself is free. The bot runs on Vexa, and every new Vexa account gets about 4 hours of meetings free. After that, Vexa charges roughly half a dollar per meeting hour, paid to Vexa on your own account.',
+     more: 'There is no card to enter and nothing to pay to Meeting Agent. Each person uses their own Vexa account, so nobody shares a bill. When the free Vexa credit is used up, the bot simply stops joining until that Vexa account is topped up; your old reports stay.'},
+    {chip: true, q: 'Which meetings and languages?', k: ['language', 'languages', 'hindi', 'telugu', 'english', 'hinglish', 'urdu', 'tamil', 'teams', 'google meet', 'zoom', 'webex', 'which meetings', 'platform', 'platforms', 'support', 'supports', 'supported'],
+     a: 'It works with Microsoft Teams and Google Meet. It understands Hindi, Telugu and English, even when they are mixed in one sentence, and writes the report in English. The chatbot can answer in the language you ask in.',
+     more: 'Zoom and other meeting apps are not supported yet. When you send the bot you can choose "English" (everything is translated to English) or "Original" (the transcript stays in the language spoken). The report card is always written in English.'},
+    {chip: true, q: 'Is my meeting private?', k: ['private', 'privacy', 'safe', 'secure', 'security', 'my data', 'confidential', 'who can see', 'delete', 'encrypted', 'trust'],
+     a: 'Only you can see your meetings, and your Vexa keys are stored encrypted. You can delete any meeting, or your whole account, at any time. The bot joins as a visible participant, so everyone in the call knows it is there. The audio is handled by Vexa and the report is written with Google Gemini, so please do not use it for confidential meetings.',
+     more: 'A few more details: passwords and sign-in codes are stored only as hashes, never as plain text. The bot says hello in the meeting chat so nobody is surprised. Deleting a meeting removes its report, transcript, tasks and chat from Meeting Agent; Vexa keeps its own copy in your Vexa account.'},
+    {chip: true, q: 'Who built this?', k: ['who built', 'who made', 'who created', 'who is behind', 'who owns', 'built', 'made by', 'maker', 'developer', 'developed', 'creator', 'owner', 'founder', 'sameer', 'ahmed', 'your team', 'the team', 'kisne', 'banaya'],
+     a: 'Meeting Agent was built by Sameer Ahmed and team, so you never miss a meeting. You can see the project on GitHub: github.com/sameer-sde/meeting-agent',
+     more: 'Sameer built Meeting Agent so that people who miss a meeting still get the decisions and their tasks. The code is public on GitHub at github.com/sameer-sde/meeting-agent, where you can read how it works.'},
+    {chip: true, q: "I can't sign in", k: ['sign in', 'signin', 'login', 'log in', 'password', 'forgot', 'otp', 'verification code', 'the code', 'cant', "can't", 'cannot', 'not working', 'continue with google'],
+     a: 'If you forgot your password, press "Forgot password?" and we email you a 6-digit code. If the code email does not arrive, check your Spam or Junk folder. If "Continue with Google" shows an error, use "Create an account" with your email instead.',
+     more: 'The code is valid for 15 minutes and allows 5 tries. You can ask for a new code after 45 seconds. If you first signed in with Google, the same email works with a password too: use "Forgot password?" once to set one.'},
+    {q: 'The chatbot', k: ['chatbot', 'chat bot', 'ask questions', 'voice', 'speak', 'talk to', 'assistant'],
+     a: 'After you sign in, a chatbot sits in the corner of every page. Ask it anything about a meeting, by typing or by voice, in English, Hinglish, Hindi or Telugu. It shows the exact lines from the meeting as proof.',
+     more: 'It can also do things for you after you press Confirm: mark a task as done, rename a meeting, email a report to someone, or send the bot to a meeting. While a meeting is still running you can ask it "what have I missed so far?".'},
+    {q: 'How the bot joins', k: ['bot join', 'bot joins', 'the bot', 'join the meeting', 'how does it join', 'admit', 'notetaker', 'everyone see', 'visible', 'record without'],
+     a: 'The bot joins like a normal participant with a name such as "Sameer\'s Notetaker". Someone in the meeting lets it in. It says hello in the chat, then only listens. It leaves when the meeting ends or when you press Stop bot.',
+     more: 'You can send the bot three ways: paste a link and press Send bot, schedule it for a time, or connect your calendar so it joins every meeting that has a link. A switch in Settings decides whether it also joins when you attend yourself.'},
+    {q: 'Recording and transcript', k: ['recording', 'record', 'audio', 'video', 'transcript', 'playback', 'listen again'],
+     a: 'Each report has a full transcript with speaker names and times, which you can search and download. When Vexa keeps the audio, you can also play the meeting back and jump to any line. Video is not recorded.',
+     more: 'Clicking a time in the transcript plays that moment. The Speakers view shows who spoke when across the meeting.'},
+    {q: 'Tasks', k: ['task', 'tasks', 'action item', 'action items', 'to do', 'todo', 'follow up', 'promise', 'deadline'],
+     a: 'Every action item from every meeting lands on one Tasks page, with its owner and due date, and a tick box to mark it done. For repeat meetings, a promise tracker shows which of last time\'s tasks were done, are in progress, are stuck, or were not mentioned.'},
+    {q: 'How long it takes', k: ['how long', 'how fast', 'how soon', 'when will', 'minutes', 'wait', 'time taken'],
+     a: 'The report card usually arrives about 2 minutes after the bot leaves the meeting, by email and on your dashboard.'},
+    {q: 'Telegram and calendar', k: ['telegram', 'calendar', 'outlook', 'google calendar', 'schedule', 'auto join', 'automatic', 'reminder', 'brief'],
+     a: 'Both are optional. With a calendar connected, the bot joins every meeting that has a link. With Telegram connected, it asks before each meeting whether you are joining, and sends a short brief about 10 minutes before: last time\'s decisions and your open tasks.'},
+    {q: 'Phone', k: ['phone', 'mobile', 'android', 'iphone', 'ios', 'play store', 'download app', 'install'],
+     a: 'There is nothing to install. Meeting Agent is a website and works in the browser on a laptop or a phone.'},
+    {q: 'What is Vexa?', k: ['vexa', 'keys', 'key', 'api key', 'bot key', 'transcription key'],
+     a: 'Vexa is the service that puts the bot into the meeting and turns the speech into text. You make a free Vexa account and paste two keys from it on the Set up page. Your keys are stored encrypted and used only for your own meetings.'}
+  ];
+  var TALK = [
+    [/^\s*(hi|hii+|hello|hey|namaste|salam|assalam\w*|good (morning|evening|afternoon))\b/i, 'Hi! Ask me anything about Meeting Agent, or tap one of the questions below.'],
+    [/\b(thanks|thank you|thank u|thx|shukriya|dhanyavad)\b/i, 'Happy to help. Ask me anything else about Meeting Agent.'],
+    [/\b(how are you|how r u|kaise ho|kya haal)\b/i, 'I am doing well, thank you. What would you like to know about Meeting Agent?'],
+    [/\b(who are you|your name|what are you|are you (a )?(bot|human|ai|robot))\b/i, 'I am the Meeting Agent help bot. I answer questions about the app from a list of written answers. After you sign in, a smarter chatbot answers questions about your own meetings.'],
+    [/^\s*(bye|goodbye|see you|ok|okay|nice|great|good|cool)\W*$/i, 'Glad that helped. I am here if you need anything else.']
   ];
   var cb = document.getElementById('cb'), toggle = document.getElementById('cb-btn'), msgs = document.getElementById('msgs');
   var form = document.getElementById('chatform'), input = document.getElementById('question'), chips = document.getElementById('chips');
   FAQ.forEach(function (f, i) {
+    if (!f.chip) return;
     var b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = f.q; b.dataset.i = i; chips.appendChild(b);
   });
   function show(on) {
@@ -75,9 +111,9 @@
     msgs.appendChild(d);
     if (typing) { clearInterval(typing.timer); typing.el.textContent = typing.text; typing = null; }   // finish the last one at once
     if (!typed || still) { d.textContent = text; msgs.scrollTop = msgs.scrollHeight; return; }
-    var i = 0;                                   // the answer is typed out, a few letters at a time
+    var i = 0, step = Math.max(2, Math.ceil(text.length / 110));   // typed out; long answers type faster
     typing = {el: d, text: text, timer: setInterval(function () {
-      i += 2; d.textContent = text.slice(0, i); msgs.scrollTop = msgs.scrollHeight;
+      i += step; d.textContent = text.slice(0, i); msgs.scrollTop = msgs.scrollHeight;
       if (i >= text.length) { clearInterval(typing.timer); typing = null; }
     }, 18)};
   }
@@ -92,14 +128,28 @@
     });
     return best;
   }
+  var lastTopic = null, toldMore = false;
+  var MORE = /^\s*(tell me |show me |give me |i want |can i (know|get|have) |explain |say )?(some |a bit |a little )?(more|details?|detail me|elaborate|aur|aur batao|and\??|what else|anything else|continue|go on)\b.{0,25}$|\b(more about (this|it|that)|more (details?|info|information)|tell me more|in detail|explain more|aur batao)\b/i;
   function reply(text, entry) {
     add('user', text);
-    if (!entry && /^\s*(hi|hii+|hello|hey|namaste|salam|assalam\w*|good (morning|evening|afternoon))\b/i.test(text) && text.trim().split(/\s+/).length <= 3) {
-      add('bot', 'Hi! Ask me anything about Meeting Agent, or tap one of the questions below.', true);
+    var f = entry || find(text);
+    if (!f && MORE.test(text)) {                 // "more about this": go deeper into the last topic
+      var topic = lastTopic || FAQ[0];
+      if (topic.more && !(toldMore && topic === lastTopic)) {
+        lastTopic = topic; toldMore = true;
+        add('bot', topic.more, true);
+      } else {
+        add('bot', 'That is all I have on that. You can ask about: what it does, how to start, the cost, languages, privacy, the chatbot, recording, tasks, Telegram and calendar, or who built it.', true);
+      }
       return;
     }
-    var f = entry || find(text);
-    add('bot', f ? f.a : "I can answer simple questions about Meeting Agent here: what it is, who built it, how to start, the cost, languages, privacy and sign-in. Try one of the buttons below. Once you sign in, I can answer questions about your own meetings.", true);
+    if (!f) {
+      for (var i = 0; i < TALK.length; i++) if (TALK[i][0].test(text) && text.trim().split(/\s+/).length <= 6) { add('bot', TALK[i][1], true); return; }
+      add('bot', "I don't have an answer for that one. I only know about Meeting Agent: what it does, how to start, the cost, languages, privacy, the chatbot, recording, tasks, and who built it. Tap a question below, or ask me about one of these.", true);
+      return;
+    }
+    lastTopic = f; toldMore = false;
+    add('bot', f.a, true);
   }
   chips.addEventListener('click', function (e) {
     if (e.target.classList.contains('chip')) reply(e.target.textContent, FAQ[e.target.dataset.i]);
