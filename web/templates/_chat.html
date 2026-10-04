@@ -101,12 +101,35 @@
     voiceBtn.textContent = (on ? '🔊 Read aloud: on' : '🔈 Read aloud: off');
     if (!on && synth) synth.cancel();
   }
+  // Pick the most natural voice this browser has, instead of the robotic default.
+  var GOOD = [/natural/i, /^google/i, /neural|premium|enhanced|siri/i, /samantha|karen|moira|tessa|veena|lekha|heera|neerja|swara/i];
+  function bestVoice(lang) {
+    var short = lang.slice(0, 2), list = synth.getVoices().filter(function (v) { return v.lang.replace('_', '-').slice(0, 2) === short; });
+    function rank(v) {
+      var name = v.name, r = GOOD.length;
+      for (var i = 0; i < GOOD.length; i++) if (GOOD[i].test(name)) { r = i; break; }
+      var region = v.lang.replace('_', '-') === lang ? 0 : /en-(GB|US)/.test(v.lang.replace('_', '-')) ? 1 : 2;
+      return r * 10 + region + (/male/i.test(name) && !/female/i.test(name) ? 5 : 0);
+    }
+    list.sort(function (x, y) { return rank(x) - rank(y); });
+    return list[0] || null;
+  }
+  if (synth && synth.getVoices) { synth.getVoices(); if ('onvoiceschanged' in synth) synth.onvoiceschanged = function () { synth.getVoices(); }; }
   function say(text) {
     if (!synth || !readAloud || !text) return;
     synth.cancel();
-    var u = new SpeechSynthesisUtterance(text.replace(/[*_#`>]/g, ''));
-    if (/[\u0900-\u097F]/.test(text)) u.lang = 'hi-IN'; else if (/[\u0C00-\u0C7F]/.test(text)) u.lang = 'te-IN'; else u.lang = 'en-IN';
-    synth.speak(u);
+    text = text.replace(/[*_#`>]/g, '').replace(/\s+/g, ' ').trim();
+    var lang = /[\u0900-\u097F]/.test(text) ? 'hi-IN' : /[\u0C00-\u0C7F]/.test(text) ? 'te-IN' : 'en-IN';
+    var voice = bestVoice(lang);
+    // Short pieces, one sentence at a time: the better voices cut off on long text otherwise.
+    (text.match(/[^.!?।\n]+[.!?।]*/g) || [text]).forEach(function (piece) {
+      piece = piece.trim();
+      if (!piece) return;
+      var u = new SpeechSynthesisUtterance(piece);
+      if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = lang;
+      u.rate = 1; u.pitch = 1;
+      synth.speak(u);
+    });
   }
   if (synth) { voiceBtn.style.display = 'block'; voiceBtn.addEventListener('click', function () { setRead(!readAloud); }); }
   if (Rec) {
