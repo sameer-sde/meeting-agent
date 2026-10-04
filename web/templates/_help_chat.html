@@ -1,0 +1,106 @@
+{# The help bot on the sign-in pages: fixed answers about Meeting Agent, no AI call, nothing is saved. #}
+<style>
+.cb-btn{position:fixed;right:22px;bottom:22px;z-index:50;width:58px;height:58px;border-radius:50%;border:0;cursor:pointer;background:var(--accent);color:#1B1A17;display:grid;place-items:center;box-shadow:0 10px 28px rgba(0,0,0,.45)}
+.cb-btn:hover{filter:brightness(1.06)}
+.cb-btn svg{width:30px;height:30px}
+.cb-btn .x{display:none;font:400 26px/1 Manrope,sans-serif}
+.cb-open .cb-btn .bot{display:none}.cb-open .cb-btn .x{display:block}
+.cb-win{position:fixed;right:22px;bottom:92px;z-index:50;width:380px;max-width:calc(100vw - 32px);height:520px;max-height:calc(100vh - 120px);display:none;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 18px 48px rgba(0,0,0,.55)}
+.cb-open .cb-win{display:flex}
+.cb-head{display:flex;gap:12px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--panel2)}
+.cb-face{flex:none;width:38px;height:38px;border-radius:50%;background:var(--accent);color:#1B1A17;display:grid;place-items:center}
+.cb-face svg{width:22px;height:22px}
+.cb-head b{display:block;font-family:Newsreader,Georgia,serif;font-weight:400;font-size:18px;line-height:1.2}
+.cb-head span{font-size:12px;color:var(--muted)}
+.msgs{flex:1;display:flex;flex-direction:column;gap:10px;overflow:auto;padding:14px}
+.msg{max-width:86%;padding:9px 13px;border-radius:14px;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.msg.user{align-self:flex-end;background:var(--accent);color:#1B1A17;border-bottom-right-radius:4px}
+.msg.bot{align-self:flex-start;background:var(--panel2);border:1px solid var(--line);border-bottom-left-radius:4px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 10px}
+.chip{font:12px Manrope,sans-serif;color:var(--ink);background:none;border:1px solid var(--line);border-radius:99px;padding:5px 10px;cursor:pointer}
+.chip:hover{border-color:var(--accent)}
+.send{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--line)}
+.send input{flex:1}
+.send .btn{width:auto;margin:0}
+@media(max-width:520px){.cb-btn{right:14px;bottom:14px}.cb-win{left:8px;right:8px;bottom:82px;width:auto;max-width:none}}
+</style>
+{% set bot_icon %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v3"/><circle cx="12" cy="2.5" r="1" fill="currentColor"/><rect x="4" y="6" width="16" height="12" rx="4"/><circle cx="9" cy="12" r="1.2" fill="currentColor"/><circle cx="15" cy="12" r="1.2" fill="currentColor"/><path d="M9.5 15.2c1.5 1 3.5 1 5 0"/><path d="M2 11v3M22 11v3"/><path d="M9 18l-1.5 3 4-3"/></svg>{% endset %}
+<div id="cb">
+  <section class="cb-win" id="cb-win" aria-label="Meeting Agent help">
+    <div class="cb-head"><span class="cb-face">{{ bot_icon }}</span><div><b>Meeting Agent help</b><span>Quick answers before you sign in</span></div></div>
+    <div class="msgs" id="msgs" aria-live="polite">
+      <div class="msg bot">Hi 👋 How can I help you?<br>Tap a question, or type your own.</div>
+    </div>
+    <div class="chips" id="chips"></div>
+    <form class="send" id="chatform">
+      <input type="text" id="question" maxlength="200" placeholder="Ask about Meeting Agent" aria-label="Your question" autocomplete="off">
+      <button class="btn accent" id="askbtn">Send</button>
+    </form>
+  </section>
+  <button class="cb-btn" id="cb-btn" type="button" aria-label="Open help chat" aria-expanded="false" aria-controls="cb-win"><span class="bot">{{ bot_icon }}</span><span class="x" aria-hidden="true">✕</span></button>
+</div>
+<script>
+(function () {
+  // Each entry: the question shown as a button, words that point to it when typed, and the answer.
+  var FAQ = [
+    {q: 'What is Meeting Agent?', k: ['what', 'meeting agent', 'about', 'do', 'kya', 'feature'],
+     a: 'A bot joins your Microsoft Teams or Google Meet meeting and listens. After the meeting you get a report card: summary, decisions, action items and who said what. You also get the recording, a transcript you can search, a tasks list, and a chatbot you can ask about the meeting.'},
+    {q: 'How do I start?', k: ['start', 'begin', 'sign up', 'signup', 'register', 'account', 'create', 'use', 'kaise', 'setup', 'set up'],
+     a: 'Press "Create an account" and confirm your email with the 6-digit code we send. The Set up page then walks you through it: add two free keys from Vexa (the service the bot runs on), paste a meeting link, and press Send bot. It takes about 5 minutes.'},
+    {q: 'Is it free?', k: ['free', 'price', 'cost', 'pay', 'paid', 'money', 'charge', 'plan', 'paisa'],
+     a: 'Meeting Agent itself is free. The bot runs on Vexa, and every new Vexa account gets about 4 hours of meetings free. After that, Vexa charges roughly half a dollar per meeting hour, paid to Vexa on your own account.'},
+    {q: 'Which meetings and languages?', k: ['language', 'hindi', 'telugu', 'english', 'teams', 'meet', 'zoom', 'google', 'which', 'support'],
+     a: 'It works with Microsoft Teams and Google Meet. It understands Hindi, Telugu and English, even when they are mixed in one sentence, and writes the report in English. The chatbot can answer in the language you ask in.'},
+    {q: 'Is my meeting private?', k: ['private', 'privacy', 'safe', 'secure', 'security', 'data', 'confidential', 'who can see', 'delete'],
+     a: 'Only you can see your meetings, and your Vexa keys are stored encrypted. You can delete any meeting, or your whole account, at any time. The bot joins as a visible participant, so everyone in the call knows it is there. The audio is handled by Vexa and the report is written with Google Gemini, so please do not use it for confidential meetings.'},
+    {q: 'Who built this?', k: ['who built', 'who made', 'built', 'made by', 'maker', 'developer', 'developed', 'created', 'creator', 'owner', 'founder', 'sameer', 'kisne', 'banaya'],
+     a: 'Meeting Agent was built by Sameer Ahmed and team, so you never miss a meeting.'},
+    {q: "I can't sign in", k: ['sign in', 'signin', 'login', 'log in', 'password', 'forgot', 'code', 'otp', 'cant', "can't", 'not working', 'error'],
+     a: 'If you forgot your password, press "Forgot password?" and we email you a 6-digit code. If the code email does not arrive, check your Spam or Junk folder. If "Continue with Google" shows an error, use "Create an account" with your email instead.'}
+  ];
+  var cb = document.getElementById('cb'), toggle = document.getElementById('cb-btn'), msgs = document.getElementById('msgs');
+  var form = document.getElementById('chatform'), input = document.getElementById('question'), chips = document.getElementById('chips');
+  FAQ.forEach(function (f, i) {
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = f.q; b.dataset.i = i; chips.appendChild(b);
+  });
+  function show(on) {
+    cb.classList.toggle('cb-open', on); toggle.setAttribute('aria-expanded', on ? 'true' : 'false');
+    if (on) { msgs.scrollTop = msgs.scrollHeight; input.focus(); }
+  }
+  toggle.addEventListener('click', function () { show(!cb.classList.contains('cb-open')); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') show(false); });
+  var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches, typing = null;
+  function add(cls, text, typed) {
+    var d = document.createElement('div'); d.className = 'msg ' + cls;
+    msgs.appendChild(d);
+    if (typing) { clearInterval(typing.timer); typing.el.textContent = typing.text; typing = null; }   // finish the last one at once
+    if (!typed || still) { d.textContent = text; msgs.scrollTop = msgs.scrollHeight; return; }
+    var i = 0;                                   // the answer is typed out, a few letters at a time
+    typing = {el: d, text: text, timer: setInterval(function () {
+      i += 2; d.textContent = text.slice(0, i); msgs.scrollTop = msgs.scrollHeight;
+      if (i >= text.length) { clearInterval(typing.timer); typing = null; }
+    }, 18)};
+  }
+  function find(text) {
+    var t = ' ' + text.toLowerCase() + ' ', best = null, top = 0;
+    FAQ.forEach(function (f) {
+      var n = f.k.filter(function (w) { return t.indexOf(w) > -1; }).length;
+      if (n > top) { top = n; best = f; }
+    });
+    return best;
+  }
+  function reply(text, entry) {
+    add('user', text);
+    var f = entry || find(text);
+    add('bot', f ? f.a : "I can answer simple questions about Meeting Agent here: what it is, who built it, how to start, the cost, languages, privacy and sign-in. Try one of the buttons below. Once you sign in, I can answer questions about your own meetings.", true);
+  }
+  chips.addEventListener('click', function (e) {
+    if (e.target.classList.contains('chip')) reply(e.target.textContent, FAQ[e.target.dataset.i]);
+  });
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var text = input.value.trim(); if (!text) return;
+    input.value = ''; reply(text);
+  });
+})();
+</script>
