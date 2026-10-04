@@ -47,52 +47,88 @@ class Busy(Exception):
 _no_fast = set()  # models that refused the "answer quickly" setting, so it isn't tried again
 
 
-def _gemini(prompt, as_json=False, fast=False):
-    """fast=True is for the chat: a quicker model if one is set, and no long "thinking" first."""
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-    if fast:
-        model = os.environ.get("GEMINI_CHAT_MODEL") or model
-    config = {"responseMimeType": "application/json"} if as_json else {}
-    quick = None
-    if fast and model not in _no_fast:
-        # Flash models think before answering, which is most of the wait. Turn that right down.
-        quick = {"thinkingBudget": 0} if "2.5" in model else {"thinkingLevel": "minimal"}
+def _models(fast):
+    """Which Gemini models to try, in order. Each model has its own free limit, so when one is
+    full (or missing) the next one can still answer.
 
-    def call(cfg):
-        r = None
-        for attempt in range(3):   # Gemini's free tier is sometimes busy for a moment; try again
-            r = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+    Chat tries GEMINI_CHAT_MODEL first when it is set. Everything then goes to GEMINI_MODEL, and
+    last to a backup: GEMINI_BACKUP_MODEL, or the "-lite" sister of a "...-flash" model.
+    """
+    main = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    backup = os.environ.get("GEMINI_BACKUP_MODEL")
+    if backup is None and main.endswith("-flash"):
+        backup = main + "-lite"
+    order = []
+    for m in ((os.environ.get("GEMINI_CHAT_MODEL") if fast else None), main, backup):
+        if m and m not in order and ("gone", m) not in _no_fast:
+            order.append(m)
+    return order or [main]
+
+
+def _quick_for(model):
+    """Flash models think before answering, which is most of the wait in a chat. Turn that right down."""
+    if model in _no_fast:
+        return None
+    return {"thinkingBudget": 0} if "2.5" in model else {"thinkingLevel": "minimal"}
+
+
+def _ask(prompt, config, fast, stream):
+    """Send one request, moving down the list of models until one accepts it.
+
+    Returns the successful response. Raises Busy when every model's free limit is full.
+    """
+    busy, last = False, None
+    for model in _models(fast):
+        verb = "streamGenerateContent?alt=sse" if stream else "generateContent"
+        for attempt in range(4):
+            quick = _quick_for(model) if fast else None
+            cfg = {**config, **({"thinkingConfig": quick} if quick else {})}
+            r = last = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:{verb}",
                 headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"], "Content-Type": "application/json"},
                 json={"contents": [{"parts": [{"text": prompt}]}], **({"generationConfig": cfg} if cfg else {})},
-                timeout=120)
-            if r.status_code not in (429, 500, 502, 503, 504) or attempt == 2:
+                stream=stream, timeout=120)
+            if r.ok:
+                return r
+            if r.status_code == 400 and quick:          # this model doesn't take the quick setting
+                _no_fast.add(model)
+                continue
+            if r.status_code == 404:                    # this model doesn't exist for this key: skip it from now on
+                _no_fast.add(("gone", model))
                 break
-            time.sleep(1.5 * (attempt + 1))
-        return r
-
-    def text_of(r):
-        try:
-            parts = r.json()["candidates"][0]["content"]["parts"]
-        except (KeyError, IndexError, ValueError, TypeError):
-            return ""
-        return "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
-
-    r = call({**config, "thinkingConfig": quick} if quick else config)
-    if quick and r.status_code == 400:   # this model doesn't take that setting; ask the normal way
-        _no_fast.add(model)
-        r = call(config)
-    if r.status_code == 429:
+            if r.status_code == 429:                    # this model's free limit is full: try the next one
+                busy = True
+                break
+            if r.status_code in (500, 502, 503, 504) and attempt < 2:
+                time.sleep(1.5 * (attempt + 1))         # Gemini is busy for a moment; try again
+                continue
+            break
+    if busy:
         raise Busy("Gemini's free limit is used up for the moment")
-    r.raise_for_status()
-    out = text_of(r)
-    if not out and quick:                # an empty reply with the quick setting: ask the normal way once
-        r = call(config)
-        r.raise_for_status()
-        out = text_of(r)
-    if not out:
-        raise RuntimeError("Gemini sent back an empty answer")
-    return out
+    last.raise_for_status()
+    return last
+
+
+def _text_of(payload):
+    try:
+        parts = payload["candidates"][0]["content"]["parts"]
+    except (KeyError, IndexError, ValueError, TypeError):
+        return ""
+    return "".join(p.get("text", "") for p in parts if not p.get("thought"))
+
+
+def _gemini(prompt, as_json=False, fast=False):
+    """fast=True is for the chat: a quicker model if one is set, and no long "thinking" first."""
+    config = {"responseMimeType": "application/json"} if as_json else {}
+    for quickly in ((True, False) if fast else (False,)):
+        r = _ask(prompt, config, quickly, stream=False)
+        try:
+            out = _text_of(r.json()).strip()
+        except ValueError:
+            out = ""
+        if out:
+            return out               # an empty reply with the quick setting: ask the normal way once
+    raise RuntimeError("Gemini sent back an empty answer")
 
 
 def chat_stream(prompt):
@@ -101,52 +137,15 @@ def chat_stream(prompt):
     if not os.environ.get("GEMINI_API_KEY"):
         yield _ollama(prompt)
         return
-    main = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-    model = os.environ.get("GEMINI_CHAT_MODEL") or main
-    if ("gone", model) in _no_fast:     # the lighter chat model wasn't available last time
-        model = main
-
-    def start(mdl, quick):
-        cfg = {"thinkingConfig": quick} if quick else None
-        return requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{mdl}:streamGenerateContent?alt=sse",
-            headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"], "Content-Type": "application/json"},
-            json={"contents": [{"parts": [{"text": prompt}]}], **({"generationConfig": cfg} if cfg else {})},
-            stream=True, timeout=120)
-
-    def quick_for(mdl):
-        if mdl in _no_fast:
-            return None
-        return {"thinkingBudget": 0} if "2.5" in mdl else {"thinkingLevel": "minimal"}
-
-    r = None
-    for attempt in range(3):
-        quick = quick_for(model)
-        r = start(model, quick)
-        if r.status_code == 400 and quick:              # model doesn't take the "answer quickly" setting
-            _no_fast.add(model)
-            continue
-        if r.status_code in (400, 404) and model != main:   # the lighter chat model isn't available
-            _no_fast.add(("gone", model))
-            _no_fast.add(model)
-            model = main
-            continue
-        if r.status_code in (500, 502, 503, 504) and attempt < 2:
-            time.sleep(1.5)
-            continue
-        break
-    if r.status_code == 429:
-        raise Busy("Gemini's free limit is used up for the moment")
-    r.raise_for_status()
+    r = _ask(prompt, {}, True, stream=True)
     r.encoding = "utf-8"
     for line in r.iter_lines(decode_unicode=True):
         if not line or not line.startswith("data:"):
             continue
         try:
-            parts = json.loads(line[5:])["candidates"][0]["content"]["parts"]
-        except (KeyError, IndexError, ValueError, TypeError):
+            text = _text_of(json.loads(line[5:]))
+        except ValueError:
             continue
-        text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
         if text:
             yield text
 

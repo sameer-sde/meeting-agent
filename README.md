@@ -338,6 +338,7 @@ question in step 1 is skipped and the bot joins every meeting.
 | `DATABASE_URL`                                | Postgres connection string (Neon)                     |
 | `GEMINI_API_KEY`, `GEMINI_MODEL`              | Report, MOM, chapters and chat                        |
 | `GEMINI_CHAT_MODEL`                           | Optional lighter model for chat only                  |
+| `GEMINI_BACKUP_MODEL`                         | Optional: model to use when the main one's free limit is full (default: the `-lite` sister of a `-flash` model) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`    | Continue with Google                                  |
 | `SMTP_*` or `BREVO_API_KEY`, `MAIL_FROM`      | Report emails and sign-in codes                       |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` | The "are you joining?" check-in                       |

@@ -684,8 +684,9 @@ def _chat_reply(kind, where, meeting=None, rows=None, material="", empty=None):
                 else:
                     yield json.dumps({"answer": value.text, "html": chat.bot_html(value)}) + "\n"
         except reports.Busy:
-            yield json.dumps({"error": "I've answered a lot in the last minute and the free AI limit is full. "
-                                       "Wait about a minute and ask again."}) + "\n"
+            yield json.dumps({"error": "The free AI limit is full right now. Wait a minute and ask again. "
+                                       "If this keeps showing, today's free limit is used up and it "
+                                       "opens again tomorrow."}) + "\n"
         except Exception as e:
             Session.rollback()
             print("Chat failed:", repr(e))
