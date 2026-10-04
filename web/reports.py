@@ -166,6 +166,24 @@ def section_bullets(md, heading):
     return out
 
 
+def plain(md, heading=None):
+    """A report card (or one "## heading" of it) as plain text, ready to paste into a chat or email."""
+    out, inside = [], heading is None
+    for line in (md or "").splitlines():
+        t = line.strip()
+        if t.startswith("#"):
+            name = t.lstrip("# ").strip()
+            if heading is None:
+                out += ["", name.upper()]
+            inside = heading is None or name.lower().startswith(heading.lower())
+            continue
+        if not inside or not t:
+            continue
+        t = t.replace("**", "").replace("__", "")
+        out.append("• " + t[1:].strip() if t[:1] in "-*•" and len(t) > 1 and t[1:2] == " " else t)
+    return "\n".join(out).strip()
+
+
 def _ollama(prompt):
     url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
     model = os.environ.get("OLLAMA_MODEL", "llama3.1")

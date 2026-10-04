@@ -101,6 +101,8 @@ def handle_telegram(db):
 def ask_attendance(db, user):
     if not (tg_token() and user.telegram_chat_id):
         return 0
+    if user.always_join:   # the bot goes to every meeting, so there is nothing to ask
+        return 0
     asked = 0
     now = datetime.now(timezone.utc)
     for m in vexa.upcoming(user.tx_key):

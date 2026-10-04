@@ -77,6 +77,7 @@ class User(Base):
     greet_on: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=True)
     greet_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     brief_on: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=True)
+    always_join: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
     meetings = relationship("Meeting", back_populates="user", cascade="all, delete-orphan")
@@ -148,7 +149,7 @@ class Meeting(Base):
     platform: Mapped[str] = mapped_column(String(32), default="")
     native_id: Mapped[str] = mapped_column(String(255), default="")
     title: Mapped[str] = mapped_column(String(500), default="")
-    status: Mapped[str] = mapped_column(String(32), default="done")  # done | empty | skipped | error
+    status: Mapped[str] = mapped_column(String(32), default="done")  # done | empty | skipped | error | deleted
     report_md: Mapped[str] = mapped_column(Text, default="")
     transcript_json: Mapped[str] = mapped_column(Text, default="")
     mom_md: Mapped[str] = mapped_column(Text, default="")

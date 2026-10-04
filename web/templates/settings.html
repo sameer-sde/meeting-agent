@@ -56,6 +56,11 @@ textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
       <p class="hint" style="margin-top:8px">Leave the name and message blank to use the ones shown in grey. If you tell Telegram you're not joining, the bot says you couldn't join. A calendar you connected earlier keeps its old bot name until you disconnect and connect it again.</p>
     </div>
     <div class="card">
+      <h2>When you join the meeting yourself</h2>
+      <p class="hint">Normally we ask on Telegram before each scheduled meeting, and the bot stays out when you say you're joining. Turn this on and the bot goes to every scheduled and calendar meeting anyway, quietly taking notes, and Telegram stops asking.</p>
+      <label class="check"><input type="checkbox" name="always_join" value="1" {{ 'checked' if g.user.always_join }}> Always send my bot, even when I join</label>
+    </div>
+    <div class="card">
       <h2>Before-meeting brief</h2>
       <p class="hint">About 10 minutes before each scheduled meeting, get a short note: what was decided last time, which tasks are still open and what is still unanswered. It comes on Telegram when connected, otherwise by email.</p>
       <label class="check"><input type="checkbox" name="brief_on" value="1" {{ 'checked' if g.user.briefs }}> Send me a brief before each scheduled meeting</label>
@@ -65,7 +70,7 @@ textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 
   <div class="card">
     <h2>Telegram check-in</h2>
-    <p class="hint">Before each scheduled meeting we ask on Telegram whether you're joining. Tap No (or don't answer) and the bot goes in your place.</p>
+    <p class="hint">Before each scheduled meeting we ask on Telegram whether you're joining. Tap No (or don't answer) and the bot goes in your place.{% if g.user.always_join %} <b>This is paused</b>, because "Always send my bot" is on above.{% endif %}</p>
     {% if g.user.telegram_chat_id %}
       <p class="ok"><i></i>Connected</p>
       <form method="post" action="{{ url_for('tg_disconnect') }}"><button class="btn ghost">Disconnect Telegram</button></form>

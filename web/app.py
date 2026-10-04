@@ -484,7 +484,7 @@ def cal_delete(cid):
 
 def _own_meeting(rid):
     m = Session.get(Meeting, rid)
-    if not m or m.user_id != g.user.id:
+    if not m or m.user_id != g.user.id or m.status == "deleted":
         abort(404)
     _fill_times([m])
     return m
@@ -525,7 +525,10 @@ def report(rid):
                             m.duration_min or 0) if segs else None
     mine = (g.user.email or "").lower()
     share_to = [p for p in people if p["email"] and p["email"].lower() != mine]
-    return render_template("report.html", m=m, report_html=html, part_rows=part_rows,
+    from .reports import plain
+    copies = {"summary": plain(m.report_md, "Summary"), "actions": plain(m.report_md, "Action items"),
+              "all": f"{m.title}\n" + plain(m.report_md)}
+    return render_template("report.html", m=m, report_html=html, part_rows=part_rows, copies=copies,
                            mentions=ments, people=people, chapters=chapters, share_to=share_to,
                            followups=followups, score=score,
                            widget=_widget("this meeting", url_for("ask", rid=m.id), url_for("chat_clear", rid=m.id),
@@ -553,6 +556,26 @@ def transcript_txt(rid):
     body = "\n".join(f"[{r['time']}] {r['speaker']}: {r['text']}" for r in rows)
     return Response(head + body + "\n", mimetype="text/plain; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="transcript-{_safe_name(m)}.txt"'})
+
+
+@app.post("/report/<int:rid>/delete")
+@login_required
+def delete_meeting(rid):
+    """Remove a meeting's report, transcript, tasks and chat for good.
+
+    The row itself stays as an empty marker, so the every-minute check doesn't see the meeting on
+    Vexa again and write a fresh report for it."""
+    m = _own_meeting(rid)
+    title = m.title
+    Session.query(Task).filter_by(meeting_id=m.id).delete()
+    Session.query(ChatMessage).filter_by(meeting_id=m.id).delete()
+    m.status, m.title = "deleted", ""
+    m.report_md = m.transcript_json = m.mom_md = m.participants_json = ""
+    m.chapters_json = m.followups_json = m.recording_json = None
+    m.started_at = m.ended_at = None
+    Session.commit()
+    flash(f"“{title}” was deleted.")
+    return redirect(url_for("index"))
 
 
 @app.post("/report/<int:rid>/rename")
@@ -1011,6 +1034,7 @@ def settings():
             u.greet_on = bool(request.form.get("greet_on"))
             u.greet_text = request.form.get("greet_text", "").strip()[:500] or None
             u.brief_on = bool(request.form.get("brief_on"))
+            u.always_join = bool(request.form.get("always_join"))
         try:
             if "ask_minutes" in request.form:
                 u.ask_minutes = max(2, min(30, int(request.form["ask_minutes"])))

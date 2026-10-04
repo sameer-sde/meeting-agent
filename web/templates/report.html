@@ -53,6 +53,13 @@ pre{white-space:pre-wrap;font:12px/1.6 'JetBrains Mono',monospace;color:var(--mu
 .wide{overflow-x:auto}
 .pop>summary{cursor:pointer;list-style:none}
 .pop>summary::-webkit-details-marker{display:none}
+.copies{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin:-6px 0 6px}
+.chipbtn{font:600 12px Manrope,sans-serif;color:var(--ink);background:none;border:1px solid var(--line);border-radius:99px;padding:6px 12px;cursor:pointer}
+.chipbtn:hover{border-color:var(--accent)}
+.danger{margin:8px 0 0;text-align:center}
+.danger summary{color:var(--muted);text-decoration:underline;text-underline-offset:3px;display:inline-block}
+.danger[open]{border:1px solid #5A3328;border-radius:14px;padding:18px;background:#261D1A}
+.danger .hint{margin:12px auto;max-width:56ch}
 .rename{order:3}
 .rename[open]{flex-basis:100%}
 .rename summary{text-decoration:underline;text-underline-offset:3px}
@@ -147,6 +154,11 @@ p.more{margin:14px 0 0}
   </nav>
 
   <section class="panel" id="card">
+    <div class="copies">
+      {% if copies.summary %}<button type="button" class="chipbtn" data-copy="summary">Copy summary</button>{% endif %}
+      {% if copies.actions %}<button type="button" class="chipbtn" data-copy="actions">Copy action items</button>{% endif %}
+      <button type="button" class="chipbtn" data-copy="all">Copy whole report</button>
+    </div>
     <article class="report">{{ report_html|safe }}</article>
   </section>
 
@@ -261,9 +273,28 @@ p.more{margin:14px 0 0}
     {% else %}<p class="empty">No attendance was recorded.</p>{% endif %}
   </section>
 
+  <details class="pop danger"><summary class="mono">Delete this meeting</summary>
+    <p class="hint">This removes the report card, transcript, Minutes of Meeting, tasks and chat of this meeting from Meeting Agent for good. It can't be undone.</p>
+    <form method="post" action="{{ url_for('delete_meeting', rid=m.id) }}"><button class="btn stop">Yes, delete it forever</button></form>
+  </details>
 </div>
 <script>
 (function () {
+  var COPY = {{ copies|tojson }};
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-copy]') : null;
+    if (!b) return;
+    var text = COPY[b.dataset.copy] || '', label = b.textContent;
+    function ok() { b.textContent = 'Copied ✓'; setTimeout(function () { b.textContent = label; }, 1600); }
+    function old() {          // for browsers without the clipboard API
+      var t = document.createElement('textarea'); t.value = text; t.style.position = 'fixed'; t.style.opacity = '0';
+      document.body.appendChild(t); t.select();
+      try { document.execCommand('copy'); ok(); } catch (err) {}
+      document.body.removeChild(t);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok, old); else old();
+  });
+
   var find = document.getElementById('find'), found = document.getElementById('found');
   var rows = [].slice.call(document.querySelectorAll('#lines .line'));
   rows.forEach(function (r) { var t = r.querySelector('.txt'); t.dataset.raw = t.textContent; });
