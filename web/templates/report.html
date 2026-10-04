@@ -6,8 +6,9 @@
 .meta{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 6px}
 .meta h1{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:38px;margin:0;flex-basis:100%}
 dl.when{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0 0}
-dl.when div{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 16px;min-width:130px}
+dl.when div,dl.when a{text-decoration:none;color:inherit;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 16px;min-width:130px}
 dl.when dt{font:12px 'JetBrains Mono',monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+dl.when small{font-size:13px;color:var(--muted)}
 dl.when dd{margin:4px 0 0;font-family:Newsreader,Georgia,serif;font-size:20px}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 24px}
 .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:0 0 22px;overflow-x:auto}
@@ -61,6 +62,20 @@ details.panel.pop>summary h2{font-size:26px;margin:0 0 4px}
 .picks{display:grid;gap:8px;margin:6px 0 4px}
 .picks label{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .picks input{accent-color:var(--accent);width:16px;height:16px}
+.tally{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 6px}
+.st{justify-self:start;font-size:12px;border-radius:99px;padding:3px 10px;white-space:nowrap;border:1px solid var(--line);color:var(--muted);align-self:start}
+.st b{font-weight:700}
+.st.done{color:var(--live);border-color:#3E5A48;background:#22302A}
+.st.in_progress{color:var(--gold);border-color:#5A4B26}
+.st.blocked{color:#F0A08A;border-color:#5A3328;background:#2E211D}
+.promise{display:grid;grid-template-columns:118px 1fr;gap:12px;padding:14px 0;border-top:1px solid var(--line)}
+.promise p{margin:4px 0 0;color:var(--muted);font-size:14px}
+.who2{font-size:13px;color:var(--muted);margin-top:2px}
+.bigscore{float:right;font-size:34px;color:var(--accent)}
+.bigscore small{font-size:15px;color:var(--muted)}
+#score .bar{margin-top:16px}
+.why{margin:4px 0 0;color:var(--muted);font-size:13px}
+.tip{margin:18px 0 0;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
 .chapter{display:grid;grid-template-columns:104px 1fr;gap:12px;padding:14px 0;border-top:1px solid var(--line)}
 .chapter:first-of-type{border-top:0}
 .chapter p{margin:4px 0 0;color:var(--muted);font-size:14px}
@@ -89,7 +104,7 @@ p.more{margin:14px 0 0}
 .canplay .strip button{cursor:pointer}
 .c0{background:var(--accent)}.c1{background:var(--live)}.c2{background:var(--teams)}.c3{background:var(--gold)}.c4{background:#D98BB0}.c5{background:#7FC4D4}
 .axis{display:flex;justify-content:space-between;margin:8px 0 0 184px}
-@media(max-width:720px){.panel{padding:22px 18px}.bar{grid-template-columns:1fr;gap:6px}.num{justify-content:flex-start}.hit{grid-template-columns:1fr}.chapter{grid-template-columns:1fr;gap:4px}.line{grid-template-columns:1fr;gap:2px}.lane{grid-template-columns:1fr;gap:6px}.axis{margin-left:0}.meta h1{font-size:30px}table.t{font-size:13px}}
+@media(max-width:720px){.panel{padding:22px 18px}.bar{grid-template-columns:1fr;gap:6px}.num{justify-content:flex-start}.hit{grid-template-columns:1fr}.promise{grid-template-columns:1fr;gap:6px}.chapter{grid-template-columns:1fr;gap:4px}.line{grid-template-columns:1fr;gap:2px}.lane{grid-template-columns:1fr;gap:6px}.axis{margin-left:0}.meta h1{font-size:30px}table.t{font-size:13px}}
 {% endblock %}
 {% block page %}
 <div class="reader" id="reader">
@@ -103,6 +118,7 @@ p.more{margin:14px 0 0}
     <div><dt>Started</dt><dd>{{ t.start or '—' }}</dd></div>
     <div><dt>Ended</dt><dd>{{ t.end or '—' }}</dd></div>
     <div><dt>Duration</dt><dd>{{ t.duration or '—' }}</dd></div>
+    {% if score %}<a href="#score"><dt>Score</dt><dd>{{ score.score }}<small> / 10</small></dd></a>{% endif %}
   </dl>{% endif %}
   <div class="actions">
     <a class="btn accent" href="{{ url_for('mom', rid=m.id) }}">Minutes of Meeting (PDF)</a>
@@ -127,12 +143,42 @@ p.more{margin:14px 0 0}
     <audio id="player" controls preload="none"></audio>
   </section>
   <nav class="tabs" aria-label="Report sections">
-    <a href="#card">Report card</a><a href="#chapters">Chapters</a><a href="#transcript">Transcript</a><a href="#speakers">Speakers</a><a href="#participation">Participation</a><a href="#mentions">Mentions</a><a href="#attendance">Attendance</a>
+    <a href="#card">Report card</a>{% if followups %}<a href="#promises">Promises</a>{% endif %}{% if score %}<a href="#score">Score</a>{% endif %}<a href="#chapters">Chapters</a><a href="#transcript">Transcript</a><a href="#speakers">Speakers</a><a href="#participation">Participation</a><a href="#mentions">Mentions</a><a href="#attendance">Attendance</a>
   </nav>
 
   <section class="panel" id="card">
     <article class="report">{{ report_html|safe }}</article>
   </section>
+
+  {% if followups %}
+  {% set names = {'done': 'Done', 'in_progress': 'In progress', 'blocked': 'Stuck', 'not_mentioned': 'Not mentioned'} %}
+  <section class="panel" id="promises">
+    <h2>Promise tracker</h2>
+    <p class="hint">Tasks from the earlier meeting in this series, and what this meeting said about each one. "Not mentioned" means nobody brought it up.</p>
+    <div class="tally">{% for key, label in names.items() %}{% set n = followups|selectattr('status', 'equalto', key)|list|length %}<span class="st {{ key }}"><b>{{ n }}</b> {{ label }}</span>{% endfor %}</div>
+    {% for f in followups %}
+    <div class="promise"><span class="st {{ f.status }}">{{ names[f.status] }}</span>
+      <div><b>{{ f.text }}</b>
+        <div class="who2">{{ f.owner or 'No owner' }}{% if f.due %} · due {{ f.due }}{% endif %}</div>
+        {% if f.note %}<p>{{ f.note }}</p>{% endif %}</div></div>
+    {% endfor %}
+    <p class="hint more">Tasks this meeting reported as done were ticked off for you. If one is wrong, untick it on your <a href="{{ url_for('tasks_page') }}">Tasks</a> page.</p>
+  </section>
+  {% endif %}
+
+  {% if score %}
+  <section class="panel" id="score">
+    <h2>Meeting score <span class="bigscore">{{ score.score }}<small> / 10</small></span></h2>
+    <p class="hint">A simple measure of how useful the meeting was, worked out from the numbers below. No AI opinion.{% if not score.full %} Press "Find chapters and tasks" below to add the task points.{% endif %}</p>
+    {% for p in score.parts %}
+    <div class="bar"><span class="who">{{ p.name }}</span>
+      <span class="track" role="img" aria-label="{{ p.name }} {{ p.got }} of {{ p.of }}"><span class="fill" style="width:{{ (p.got / p.of * 100)|round|int }}%"></span></span>
+      <span class="num"><b>{{ p.got }}/{{ p.of }}</b></span></div>
+    <p class="why">{{ p.note }}</p>
+    {% endfor %}
+    <p class="tip"><span class="mono">TIP</span> {{ score.tip }}</p>
+  </section>
+  {% endif %}
 
   <section class="panel" id="chapters">
     <h2>Chapters</h2>

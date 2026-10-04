@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 import requests
 
 from . import mailer, reports, vexa
-from .models import KV, Asked, ChatMessage, Greeted, Meeting, Session, Task, User
+from .models import KV, Asked, Briefed, ChatMessage, Greeted, Meeting, Session, Task, User
 
 _lock = threading.Lock()
 
@@ -155,14 +155,37 @@ def build_mom(db, user, meeting, lines=None):
     return reports.make_mom(lines, meeting.title, when, attendees)
 
 
+def earlier_in_series(db, user, meeting):
+    """Earlier meetings of the same series: the same meeting link, or the same title. Newest first."""
+    from sqlalchemy import func, or_
+    same = [func.lower(Meeting.title) == (meeting.title or "").lower()]
+    if meeting.native_id:
+        same.append(Meeting.native_id == meeting.native_id)
+    q = db.query(Meeting).filter(Meeting.user_id == user.id, Meeting.status == "done", or_(*same))
+    if meeting.id:
+        q = q.filter(Meeting.id < meeting.id)
+    return q.order_by(Meeting.id.desc()).limit(10).all()
+
+
+FOLLOW_STATES = ("done", "in_progress", "blocked", "not_mentioned")
+
+
 def build_extras(db, user, meeting):
-    """Split a meeting into chapters and pick out its action items (one AI call). Needs meeting.id."""
+    """Chapters, action items and the promise tracker for a meeting (one AI call). Needs meeting.id."""
     from . import analytics
     rows = analytics.transcript_rows(analytics.segments(meeting), _user_tz(), reports.JUNK)
     if not rows:
-        meeting.chapters_json = "[]"
+        meeting.chapters_json = meeting.followups_json = "[]"
         return 0
-    data = reports.make_extras([f"[{i}] {r['speaker']}: {r['text']}" for i, r in enumerate(rows)])
+    series = earlier_in_series(db, user, meeting)
+    promised = []
+    if series:
+        promised = (db.query(Task).filter(Task.meeting_id.in_([m.id for m in series]), Task.done.is_(False))
+                    .order_by(Task.id.desc()).limit(30).all())
+    previous = "\n".join(f"id {t.id}: {t.text} (owner: {t.owner or 'not set'}; due: {t.due or 'not set'})"
+                         for t in promised)
+    data = reports.make_extras([f"[{i}] {r['speaker']}: {r['text']}" for i, r in enumerate(rows)], previous)
+
     chapters, last = [], -1
     for c in data["chapters"][:12]:
         try:
@@ -176,6 +199,22 @@ def build_extras(db, user, meeting):
         chapters.append({"title": title[:120], "summary": str(c.get("summary") or "").strip()[:400],
                          "sec": rows[i]["sec"], "time": rows[i]["time"]})
     meeting.chapters_json = json.dumps(chapters, ensure_ascii=False)
+
+    by_id, said = {t.id: t for t in promised}, {}
+    for f in data["followups"]:
+        try:
+            tid = int(f.get("id"))
+        except (TypeError, ValueError):
+            continue
+        if tid in by_id and f.get("status") in FOLLOW_STATES:
+            said[tid] = (f["status"], str(f.get("note") or "").strip()[:300])
+            if f["status"] == "done":      # the meeting said it is finished, so tick it off
+                by_id[tid].done = True
+    meeting.followups_json = json.dumps(
+        [{"task_id": t.id, "text": t.text, "owner": t.owner, "due": t.due, "from": t.meeting.title,
+          "status": said.get(t.id, ("not_mentioned", ""))[0], "note": said.get(t.id, ("", ""))[1]}
+         for t in promised], ensure_ascii=False)
+
     db.query(Task).filter_by(meeting_id=meeting.id, done=False).delete()
     kept = {t.text.lower() for t in db.query(Task).filter_by(meeting_id=meeting.id)}
     made = 0
@@ -188,6 +227,77 @@ def build_extras(db, user, meeting):
                     owner=str(t.get("owner") or "").strip()[:120], due=str(t.get("due") or "").strip()[:120]))
         made += 1
     return made
+
+
+# ---------- Before-meeting brief ----------
+
+BRIEF_MINUTES = 10
+
+
+def brief_text(db, user, title, when):
+    """A short note to read before a meeting: last time's decisions, open tasks, open questions.
+
+    No AI call: it is put together from what earlier meetings already saved. '' when there is nothing to say.
+    """
+    probe = Meeting(user_id=user.id, title=title, native_id="")
+    series = earlier_in_series(db, user, probe)
+    last = series[0] if series else (db.query(Meeting).filter_by(user_id=user.id, status="done")
+                                     .order_by(Meeting.id.desc()).first())
+    lines = []
+    if last:
+        day = (last.started_at or last.created_at)
+        day = _aware(day).astimezone(_user_tz())
+        label = "Last time" if series else f"Your last meeting, \"{last.title}\""
+        decisions = reports.section_bullets(last.report_md, "Key decisions")[:5]
+        if decisions:
+            lines += [f"{label} ({day.day} {day.strftime('%b')}) you decided:"] + [f"• {d}" for d in decisions] + [""]
+        questions = reports.section_bullets(last.report_md, "Open questions")[:4]
+        if questions:
+            lines += ["Still unanswered from then:"] + [f"• {q}" for q in questions] + [""]
+    todo = db.query(Task).filter_by(user_id=user.id, done=False)
+    if series:
+        todo = todo.filter(Task.meeting_id.in_([m.id for m in series]))
+    todo = todo.order_by(Task.id.desc()).limit(6).all()
+    if todo:
+        lines += [f"Open tasks{' from this series' if series else ''}:"]
+        lines += [f"• {t.text}" + (f" ({t.owner}" + (f", due {t.due}" if t.due else "") + ")" if t.owner else
+                                    (f" (due {t.due})" if t.due else "")) for t in todo] + [""]
+    if not lines:
+        return ""
+    return "\n".join([f"📋 Brief for \"{title}\", starting at {when}", ""] + lines).strip()
+
+
+def send_briefs(db, user):
+    """A few minutes before each scheduled meeting, send the brief on Telegram (or by email)."""
+    if not user.briefs:
+        return 0
+    sent = 0
+    now = datetime.now(timezone.utc)
+    for m in vexa.upcoming(user.tx_key):
+        mins = (m["start"] - now).total_seconds() / 60
+        if not (1 < mins <= BRIEF_MINUTES):
+            continue
+        if db.query(Briefed).filter_by(user_id=user.id, vexa_id=m["id"]).first():
+            continue
+        db.add(Briefed(user_id=user.id, vexa_id=m["id"]))
+        when = m["start"].astimezone(_user_tz()).strftime("%I:%M %p").lstrip("0")
+        text = brief_text(db, user, m["title"], when)
+        if not text:
+            continue
+        if tg_token() and user.telegram_chat_id:
+            tg("sendMessage", chat_id=user.telegram_chat_id, text=text)
+        else:
+            try:
+                body = "\n".join(("- " + x[2:]) if x.startswith("• ") else (f"## {x}" if x.endswith(":") else x)
+                                 for x in text.splitlines()[2:])
+                mailer.send_report([user.email], f"Brief: {m['title']} starts at {when}", body, None, None,
+                                   hello=f"Hi {user.first_name},",
+                                   intro=f"Your meeting \"{m['title']}\" starts at {when}. Here is what to remember.")
+            except Exception:
+                traceback.print_exc()
+                continue
+        sent += 1
+    return sent
 
 
 def share_report(user, row, emails, link):
@@ -379,7 +489,7 @@ def tick():
     """One pass over every user. Safe to call often; overlapping calls are skipped."""
     if not _lock.acquire(blocking=False):
         return {"skipped": True}
-    stats = {"users": 0, "reports": 0, "asked": 0, "greeted": 0, "telegram": 0, "errors": 0}
+    stats = {"users": 0, "reports": 0, "asked": 0, "greeted": 0, "briefs": 0, "telegram": 0, "errors": 0}
     db = Session()
     try:
         stats["telegram"] = handle_telegram(db)
@@ -397,6 +507,8 @@ def tick():
             try:
                 stats["reports"] += process_finished(db, user)
                 stats["asked"] += ask_attendance(db, user)
+                db.commit()
+                stats["briefs"] += send_briefs(db, user)
                 db.commit()
             except Exception:
                 db.rollback()

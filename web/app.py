@@ -15,12 +15,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from flask import (Flask, abort, flash, g, jsonify, redirect, render_template,  # noqa: E402
-                   request, session, url_for)
+from flask import (Flask, Response, abort, flash, g, jsonify, redirect, render_template,  # noqa: E402
+                   request, session, stream_with_context, url_for)
 from werkzeug.middleware.proxy_fix import ProxyFix  # noqa: E402
 
 from . import chat, tasks, vexa  # noqa: E402
-from .models import Asked, ChatMessage, Greeted, Meeting, Session, Task, User, init_db  # noqa: E402
+from .models import Asked, Briefed, ChatMessage, Greeted, Meeting, Session, Task, User, init_db  # noqa: E402
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
@@ -514,10 +514,20 @@ def report(rid):
         chapters = json.loads(m.chapters_json) if m.chapters_json is not None else None
     except ValueError:
         chapters = None
+    try:
+        followups = json.loads(m.followups_json) if m.followups_json is not None else None
+    except ValueError:
+        followups = None
+    own_tasks = Session.query(Task).filter_by(meeting_id=m.id).all()
+    from .reports import section_bullets
+    score = analytics.score(part_rows, len(section_bullets(m.report_md, "Key decisions")),
+                            [(t.owner, t.due) for t in own_tasks] if m.chapters_json is not None else None,
+                            m.duration_min or 0) if segs else None
     mine = (g.user.email or "").lower()
     share_to = [p for p in people if p["email"] and p["email"].lower() != mine]
     return render_template("report.html", m=m, report_html=html, part_rows=part_rows,
                            mentions=ments, people=people, chapters=chapters, share_to=share_to,
+                           followups=followups, score=score,
                            widget=_widget("this meeting", url_for("ask", rid=m.id), url_for("chat_clear", rid=m.id),
                                           {"meeting_id": m.id},
                                           ["Give me a short summary", "What was decided?", "What do I need to do?",
@@ -564,7 +574,8 @@ def extras_generate(rid):
     try:
         made = tasks.build_extras(Session(), g.user, m)
         Session.commit()
-        flash(f"Chapters are ready, and {made} task{'s' if made != 1 else ''} added to your Tasks page.")
+        flash(f"Chapters and the promise tracker are ready, and {made} task{'s' if made != 1 else ''} "
+              "added to your Tasks page.")
     except Exception as e:
         Session.rollback()
         flash(f"Couldn't find the chapters and tasks: {e}")
@@ -618,16 +629,27 @@ def _chat_reply(kind, where, meeting=None, rows=None, material="", empty=None):
     if not (rows or material):
         return jsonify(error=empty or ("Nothing has been said in this meeting yet." if kind == "live" else
                                        "This meeting has no transcript to ask about.")), 400
-    try:
-        msg = chat.reply(g.user, kind, question, where, meeting, rows, material)
-    except reports.Busy:
-        return jsonify(error="I've answered a lot in the last minute and the free AI limit is full. "
-                             "Wait about a minute and ask again."), 429
-    except Exception as e:
-        Session.rollback()
-        print("Chat failed:", repr(e))
-        return jsonify(error="Couldn't get an answer just now. Try again in a minute."), 502
-    return jsonify(answer=msg.text, html=chat.bot_html(msg))
+    user = g.user
+
+    def lines():
+        """One JSON object per line: {"t": "words"} while writing, then {"html": ...} or {"error": ...}."""
+        import json
+        try:
+            for what, value in chat.reply_stream(user, kind, question, where, meeting, rows, material):
+                if what == "text":
+                    yield json.dumps({"t": value}) + "\n"
+                else:
+                    yield json.dumps({"answer": value.text, "html": chat.bot_html(value)}) + "\n"
+        except reports.Busy:
+            yield json.dumps({"error": "I've answered a lot in the last minute and the free AI limit is full. "
+                                       "Wait about a minute and ask again."}) + "\n"
+        except Exception as e:
+            Session.rollback()
+            print("Chat failed:", repr(e))
+            yield json.dumps({"error": "Couldn't get an answer just now. Try again in a minute."}) + "\n"
+
+    return Response(stream_with_context(lines()), mimetype="application/x-ndjson",
+                    headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"})
 
 
 @app.post("/chat/ask")
@@ -988,6 +1010,7 @@ def settings():
             u.bot_name = request.form.get("bot_name", "").strip()[:60] or None
             u.greet_on = bool(request.form.get("greet_on"))
             u.greet_text = request.form.get("greet_text", "").strip()[:500] or None
+            u.brief_on = bool(request.form.get("brief_on"))
         try:
             if "ask_minutes" in request.form:
                 u.ask_minutes = max(2, min(30, int(request.form["ask_minutes"])))
@@ -1032,6 +1055,7 @@ def tg_disconnect():
 @login_required
 def delete_account():
     Session.query(Asked).filter_by(user_id=g.user.id).delete()
+    Session.query(Briefed).filter_by(user_id=g.user.id).delete()
     Session.query(Greeted).filter_by(user_id=g.user.id).delete()
     Session.query(Task).filter_by(user_id=g.user.id).delete()
     Session.query(ChatMessage).filter_by(user_id=g.user.id).delete()

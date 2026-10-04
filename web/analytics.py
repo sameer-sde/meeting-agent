@@ -299,3 +299,56 @@ def attendance(segs, invitees, directory, part_rows, tz=None):
                      **heard(spk)})
     rows.sort(key=lambda r: (r["status"] != "Attended (spoke)", -r["pct"], r["name"].lower()))
     return rows
+
+
+def score(part_rows, decisions, task_rows, minutes):
+    """A simple score out of 10 for how useful a meeting was, with the reasons.
+
+    part_rows: participation();  decisions: how many were recorded;
+    task_rows: [(owner, due)] for its action items, or None when they haven't been picked out yet;
+    minutes: length of the meeting (0 when unknown).
+    """
+    parts = []
+    n_tasks = len(task_rows) if task_rows is not None else 0
+
+    got = min(decisions, 2) + (min(n_tasks, 2) if task_rows is not None else 0)
+    of = 4 if task_rows is not None else 2
+    said = f"{decisions} decision{'s' if decisions != 1 else ''}"
+    if task_rows is not None:
+        said += f" and {n_tasks} task{'s' if n_tasks != 1 else ''}"
+    parts.append({"name": "Outcomes", "got": got, "of": of, "note": said + " came out of it.",
+                  "tip": "End the meeting by saying the decisions and who does what, out loud."})
+
+    speakers = len(part_rows)
+    if speakers <= 1:
+        got, note = 0, "Only one person spoke." if speakers else "Nobody was heard speaking."
+    else:
+        top = part_rows[0]
+        over = top["pct"] - 100 / speakers          # how far the top speaker is above an equal share
+        got = 3 if over <= 15 else 2 if over <= 30 else 1 if over <= 45 else 0
+        note = f"{speakers} people spoke; {top['name']} had {round(top['pct'])}% of the talk time."
+    parts.append({"name": "Balance", "got": got, "of": 3, "note": note,
+                  "tip": "Ask the quieter people for their view before closing each topic."})
+
+    if task_rows is not None:
+        if not task_rows:
+            got, note = 0, "No tasks, so nothing has an owner or a date."
+        else:
+            owners = sum(1 for o, _ in task_rows if (o or "").strip())
+            dues = sum(1 for _, d in task_rows if (d or "").strip())
+            got = (1 if owners * 2 >= n_tasks else 0) + (1 if dues * 2 >= n_tasks else 0)
+            note = f"{owners} of {n_tasks} tasks have an owner, {dues} have a due date."
+        parts.append({"name": "Clarity", "got": got, "of": 2, "note": note,
+                      "tip": "Give every task one owner and a date before the meeting ends."})
+
+    if minutes:
+        got = 1 if minutes <= 45 else 0
+        parts.append({"name": "Length", "got": got, "of": 1,
+                      "note": f"{minutes} min" + (", short and focused." if got else ", longer than 45 minutes."),
+                      "tip": "Keep it under 45 minutes, or split the agenda into two meetings."})
+
+    total, of = sum(p["got"] for p in parts), sum(p["of"] for p in parts)
+    weakest = min(parts, key=lambda p: p["got"] / p["of"])
+    return {"score": round(total / of * 10, 1) if of else 0, "parts": parts,
+            "tip": weakest["tip"] if weakest["got"] < weakest["of"] else "A well-run meeting. Keep it this way.",
+            "full": task_rows is not None}

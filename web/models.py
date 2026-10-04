@@ -76,6 +76,7 @@ class User(Base):
     bot_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
     greet_on: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=True)
     greet_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    brief_on: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
     meetings = relationship("Meeting", back_populates="user", cascade="all, delete-orphan")
@@ -124,6 +125,10 @@ class User(Base):
                 f"I only listen, and I'll send a summary after the meeting.")
 
     @property
+    def briefs(self):
+        return self.brief_on is not False
+
+    @property
     def ready(self):
         return bool(self.bot_key and self.tx_key)
 
@@ -151,6 +156,7 @@ class Meeting(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     duration_min: Mapped[int | None] = mapped_column(Integer, nullable=True)  # None = not worked out yet
+    followups_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # promise tracker; None = not looked for
     chapters_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # None = not looked for yet
     recording_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # where the audio is, once found
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -206,6 +212,15 @@ class Asked(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     vexa_id: Mapped[int] = mapped_column(Integer)
     answer: Mapped[str | None] = mapped_column(String(8), nullable=True)
+
+
+class Briefed(Base):
+    """Scheduled meetings for which the before-meeting brief was already sent."""
+    __tablename__ = "briefed"
+    __table_args__ = (UniqueConstraint("user_id", "vexa_id"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    vexa_id: Mapped[int] = mapped_column(Integer)
 
 
 class Greeted(Base):

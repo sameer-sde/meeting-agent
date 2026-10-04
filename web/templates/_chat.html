@@ -21,6 +21,7 @@
 .msg.bot.wait i:nth-child(2){animation-delay:.2s}.msg.bot.wait i:nth-child(3){animation-delay:.4s}
 @keyframes cb-dot{0%,60%,100%{opacity:.25;transform:none}30%{opacity:1;transform:translateY(-3px)}}
 @media (prefers-reduced-motion:reduce){.msg.bot.wait i{animation:none}}
+.msg.bot.typing{white-space:pre-wrap}
 .msg.bot.err{color:#F0C6A8;border-color:#5A3B2A}
 .msg.bot p{margin:0 0 8px}.msg.bot p:last-child{margin:0}
 .msg.bot ul,.msg.bot ol{margin:4px 0 8px;padding-left:20px}
@@ -139,13 +140,37 @@
     a.setAttribute('aria-label', 'Thinking');
     a.innerHTML = '<i></i><i></i><i></i>';
     input.value = ''; btn.disabled = true;
+    function finish(d) {
+      a.className = 'msg bot' + (d.error ? ' err' : ''); a.removeAttribute('aria-label');
+      if (d.html) { a.innerHTML = d.html; say(d.answer); } else a.textContent = d.error || 'No answer came back. Try again.';
+    }
+    function handle(line, state) {
+      if (!line.trim()) return;
+      var d; try { d = JSON.parse(line); } catch (e) { return; }
+      if (d.t !== undefined) {             // words arriving while the answer is being written
+        if (!state.live) { state.live = true; a.className = 'msg bot typing'; a.removeAttribute('aria-label'); a.textContent = ''; }
+        a.textContent += d.t; msgs.scrollTop = msgs.scrollHeight;
+      } else { state.done = true; finish(d); }
+    }
     fetch(cb.dataset.url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({question: text})})
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        a.className = 'msg bot' + (d.error ? ' err' : ''); a.removeAttribute('aria-label');
-        if (d.html) { a.innerHTML = d.html; say(d.answer); } else a.textContent = d.error || 'No answer came back. Try again.';
+      .then(function (r) {
+        if (!r.ok || !r.body || !r.body.getReader) {
+          return r.text().then(function (t) { var st = {}; t.split('\n').forEach(function (l) { handle(l, st); }); return st; });
+        }
+        var reader = r.body.getReader(), dec = new TextDecoder(), buf = '', st = {};
+        function pump() {
+          return reader.read().then(function (x) {
+            if (x.value) buf += dec.decode(x.value, {stream: true});
+            var parts = buf.split('\n'); buf = parts.pop();
+            parts.forEach(function (l) { handle(l, st); });
+            if (x.done) { handle(buf, st); return st; }
+            return pump();
+          });
+        }
+        return pump();
       })
-      .catch(function () { a.className = 'msg bot err'; a.removeAttribute('aria-label'); a.textContent = "Couldn't get an answer just now. Try again in a minute."; })
+      .then(function (st) { if (!st.done) finish({error: "The answer stopped half way. Please ask again."}); })
+      .catch(function () { finish({error: "Couldn't get an answer just now. Try again in a minute."}); })
       .then(function () { btn.disabled = false; msgs.scrollTop = msgs.scrollHeight; input.focus(); });
   }
   form.addEventListener('submit', function (e) { e.preventDefault(); send(input.value); });

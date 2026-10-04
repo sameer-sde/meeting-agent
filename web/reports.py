@@ -95,6 +95,77 @@ def _gemini(prompt, as_json=False, fast=False):
     return out
 
 
+def chat_stream(prompt):
+    """The chat answer, piece by piece as Gemini writes it (so the page can show words right away)."""
+    import json
+    if not os.environ.get("GEMINI_API_KEY"):
+        yield _ollama(prompt)
+        return
+    main = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    model = os.environ.get("GEMINI_CHAT_MODEL") or main
+    if ("gone", model) in _no_fast:     # the lighter chat model wasn't available last time
+        model = main
+
+    def start(mdl, quick):
+        cfg = {"thinkingConfig": quick} if quick else None
+        return requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{mdl}:streamGenerateContent?alt=sse",
+            headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"], "Content-Type": "application/json"},
+            json={"contents": [{"parts": [{"text": prompt}]}], **({"generationConfig": cfg} if cfg else {})},
+            stream=True, timeout=120)
+
+    def quick_for(mdl):
+        if mdl in _no_fast:
+            return None
+        return {"thinkingBudget": 0} if "2.5" in mdl else {"thinkingLevel": "minimal"}
+
+    r = None
+    for attempt in range(3):
+        quick = quick_for(model)
+        r = start(model, quick)
+        if r.status_code == 400 and quick:              # model doesn't take the "answer quickly" setting
+            _no_fast.add(model)
+            continue
+        if r.status_code in (400, 404) and model != main:   # the lighter chat model isn't available
+            _no_fast.add(("gone", model))
+            _no_fast.add(model)
+            model = main
+            continue
+        if r.status_code in (500, 502, 503, 504) and attempt < 2:
+            time.sleep(1.5)
+            continue
+        break
+    if r.status_code == 429:
+        raise Busy("Gemini's free limit is used up for the moment")
+    r.raise_for_status()
+    r.encoding = "utf-8"
+    for line in r.iter_lines(decode_unicode=True):
+        if not line or not line.startswith("data:"):
+            continue
+        try:
+            parts = json.loads(line[5:])["candidates"][0]["content"]["parts"]
+        except (KeyError, IndexError, ValueError, TypeError):
+            continue
+        text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
+        if text:
+            yield text
+
+
+def section_bullets(md, heading):
+    """The bullet points under one "## heading" of a report card, without "None mentioned" lines."""
+    out, inside = [], False
+    for line in (md or "").splitlines():
+        t = line.strip()
+        if t.startswith("#"):
+            inside = t.lstrip("# ").lower().startswith(heading.lower())
+            continue
+        if inside and t[:1] in "-*•" and len(t) > 2:
+            item = t[1:].replace("**", "").strip()
+            if item and "none mentioned" not in item.lower() and not item.lower().startswith("no decisions"):
+                out.append(item)
+    return out
+
+
 def _ollama(prompt):
     url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
     model = os.environ.get("OLLAMA_MODEL", "llama3.1")
@@ -153,13 +224,22 @@ Speakers may use English, Hindi, Telugu or a mix. Write everything in clear Engl
 
 Reply with JSON only, in exactly this shape:
 {"chapters": [{"title": "short topic name", "line": 0, "summary": "one sentence on what was discussed"}],
- "tasks": [{"task": "what has to be done", "owner": "person's name", "due": "deadline as it was said"}]}
+ "tasks": [{"task": "what has to be done", "owner": "person's name", "due": "deadline as it was said"}],
+ "followups": [{"id": 12, "status": "done", "note": "one short line on what was said about it"}]}
 
 chapters: split the meeting into its main topics, in order. "line" is the number of the line where
 that topic starts. Use 1 chapter for a very short meeting and at most 10 for a long one.
 tasks: every action item someone agreed to or was asked to do. Use "" for owner or due when it
 was not said. Use an empty list when there are none.
+followups: PREVIOUS TASKS (below) are promises from the earlier meeting. For each one, say what THIS
+meeting shows, using its id and one of these for status:
+  "done" (someone said it is finished), "in_progress" (it was talked about but is not finished),
+  "blocked" (it is stuck or delayed), "not_mentioned" (nobody talked about it).
+Use an empty list when there are no PREVIOUS TASKS.
 Only use what was actually said. Do not invent names, dates or tasks.
+
+PREVIOUS TASKS:
+{previous}
 
 TRANSCRIPT:
 """
@@ -178,11 +258,11 @@ def _json_from(text):
         return {}
 
 
-def make_extras(numbered_lines):
-    """Chapters and action items as plain data: {"chapters": [...], "tasks": [...]}."""
-    data = _json_from(_llm(EXTRAS_PROMPT + "\n".join(numbered_lines), as_json=True))
-    return {"chapters": [c for c in data.get("chapters") or [] if isinstance(c, dict)],
-            "tasks": [t for t in data.get("tasks") or [] if isinstance(t, dict)]}
+def make_extras(numbered_lines, previous=""):
+    """Chapters, action items and follow-ups on earlier tasks: {"chapters", "tasks", "followups"}."""
+    prompt = EXTRAS_PROMPT.replace("{previous}", previous or "(none)")
+    data = _json_from(_llm(prompt + "\n".join(numbered_lines), as_json=True))
+    return {k: [x for x in data.get(k) or [] if isinstance(x, dict)] for k in ("chapters", "tasks", "followups")}
 
 
 def chat_json(prompt):
