@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+{% block title %}Meeting Agent · AI notetaker for Microsoft Teams and Google Meet{% endblock %}
+{% block css %}
+html{scroll-behavior:smooth}
+.w{max-width:1120px;margin:0 auto;padding:0 28px}
+.nav{position:sticky;top:0;z-index:20;background:rgba(27,26,23,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.nav .w{display:flex;align-items:center;justify-content:space-between;gap:16px;height:68px}
+.nav nav{display:flex;gap:26px;align-items:center}
+.nav nav a:not(.btn){color:var(--muted);text-decoration:none;font-size:14px}
+.nav nav a:not(.btn):hover{color:var(--ink)}
+.nav .btn{padding:9px 15px}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 12px}
+h1,h2.big,h3.s{font-family:Newsreader,Georgia,serif;font-weight:400;margin:0}
+
+.hero{display:grid;grid-template-columns:1.05fr 1fr;gap:56px;align-items:center;padding:76px 28px 64px}
+.hero h1{font-size:60px;line-height:1.04}
+.hero h1 em{color:var(--accent)}
+.lead{color:var(--muted);font-size:18px;line-height:1.65;max-width:46ch;margin:22px 0 28px}
+.cta{display:flex;gap:10px;flex-wrap:wrap}
+.cta .btn{padding:14px 22px;font-size:15px}
+.fine{color:var(--muted);font-size:13px;margin:16px 0 0}
+
+/* sample product panels, drawn in HTML so they stay sharp */
+.mock{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px 24px;box-shadow:0 24px 60px rgba(0,0,0,.35);position:relative}
+.mock .tag{position:absolute;top:-11px;right:18px;background:var(--panel2);border:1px solid var(--line);border-radius:99px;font:11px 'JetBrains Mono',monospace;color:var(--muted);padding:3px 10px;letter-spacing:.05em}
+.mock h4{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:17px;color:var(--accent);margin:16px 0 4px}
+.mock h4:first-of-type{margin-top:6px}
+.mock p,.mock li{font-family:Newsreader,Georgia,serif;font-size:15.5px;line-height:1.6;margin:0}
+.mock ul{margin:0;padding-left:18px}
+.mock .ttl{font-family:Newsreader,Georgia,serif;font-size:24px}
+.facts{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 2px}
+.facts span{border:1px solid var(--line);border-radius:10px;padding:5px 10px;font-size:12px;color:var(--muted)}
+.facts b{color:var(--ink);font-weight:600}
+
+.strip{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--panel)}
+.strip .w{display:flex;gap:10px 34px;flex-wrap:wrap;align-items:center;justify-content:center;padding:20px 28px;color:var(--muted);font-size:14px}
+.strip b{color:var(--ink);font-weight:600}
+.strip i{width:5px;height:5px;border-radius:50%;background:var(--accent)}
+
+section.block{padding:84px 0}
+section.block.alt{background:var(--panel);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+h2.big{font-size:42px;line-height:1.12;max-width:20ch}
+.sub{color:var(--muted);font-size:17px;line-height:1.65;max-width:56ch;margin:14px 0 0}
+
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:38px}
+.step{background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:24px}
+.step .n{font:12px 'JetBrains Mono',monospace;color:var(--accent);letter-spacing:.1em}
+.step h3{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:24px;margin:8px 0 8px}
+.step p{color:var(--muted);margin:0;line-height:1.65}
+
+.feat{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center;margin-top:76px}
+.feat:first-of-type{margin-top:46px}
+.feat.flip .txt{order:2}
+h3.s{font-size:31px;line-height:1.18}
+.feat p.d{color:var(--muted);font-size:16.5px;line-height:1.7;margin:14px 0 0}
+.ticks{list-style:none;padding:0;margin:18px 0 0;display:grid;gap:9px}
+.ticks li{display:flex;gap:10px;align-items:flex-start;color:var(--ink)}
+.ticks li::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-top:8px}
+
+.bub{max-width:84%;padding:9px 13px;border-radius:14px;font:14px/1.5 Manrope,sans-serif;margin-top:10px}
+.bub.u{margin-left:auto;background:var(--accent);color:#1B1A17;border-bottom-right-radius:4px;width:fit-content}
+.bub.b{background:var(--panel2);border:1px solid var(--line);border-bottom-left-radius:4px}
+.quote{display:block;margin-top:8px;font-size:12.5px;line-height:1.45;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:7px 9px}
+.quote .mono{font-size:11px}
+.confirm{margin-top:9px;padding:9px;border:1px solid #5A3B2A;background:#2B241E;border-radius:10px;font-size:13px;font-weight:600}
+.confirm span{display:inline-block;margin:8px 6px 0 0;padding:6px 12px;border-radius:8px;font-size:12px;background:var(--accent);color:#1B1A17}
+.confirm span+span{background:none;color:var(--ink);border:1px solid var(--line)}
+
+.tline{display:grid;grid-template-columns:78px 96px 1fr;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font:13.5px/1.45 Manrope,sans-serif}
+.tline:last-of-type{border-bottom:0}
+.tline b{font-weight:600}
+.tline.on{background:#2B241E;margin:0 -10px;padding:8px 10px;border-radius:8px;border-bottom-color:transparent}
+.player{display:flex;align-items:center;gap:12px;background:var(--panel2);border-radius:99px;padding:9px 14px;margin-bottom:12px}
+.player .pl{width:0;height:0;border-left:11px solid var(--ink);border-top:7px solid transparent;border-bottom:7px solid transparent}
+.player .ln{flex:1;height:4px;border-radius:9px;background:var(--line);position:relative}
+.player .ln::after{content:"";position:absolute;left:0;top:0;bottom:0;width:38%;border-radius:9px;background:var(--accent)}
+
+.task{display:grid;grid-template-columns:22px 1fr auto;gap:12px;align-items:start;padding:11px 0;border-bottom:1px solid var(--line);font:14px/1.45 Manrope,sans-serif}
+.task:last-of-type{border-bottom:0}
+.box{width:18px;height:18px;border-radius:6px;border:1.5px solid var(--muted);margin-top:1px}
+.box.y{background:var(--live);border-color:var(--live)}
+.task small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.pill{font-size:11.5px;border-radius:99px;padding:2px 9px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.pill.done{color:var(--live);border-color:#3E5A48;background:#22302A}
+.pill.stuck{color:#F0A08A;border-color:#5A3328;background:#2E211D}
+.pill.prog{color:var(--gold);border-color:#5A4B26}
+
+.scoretop{display:flex;justify-content:space-between;align-items:baseline}
+.scoretop b{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:44px;color:var(--accent)}
+.scoretop b small{font-size:16px;color:var(--muted)}
+.sbar{display:grid;grid-template-columns:92px 1fr 34px;gap:12px;align-items:center;font:14px Manrope,sans-serif;margin-top:13px}
+.sbar i{height:10px;border-radius:99px;background:var(--panel2);position:relative;overflow:hidden}
+.sbar i::after{content:"";position:absolute;left:0;top:0;bottom:0;width:var(--v);border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--gold))}
+.tipline{margin-top:16px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);font-size:13.5px}
+
+.priv{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:36px}
+.priv div{border:1px solid var(--line);border-radius:14px;padding:20px;background:var(--bg)}
+.priv b{display:block;font-family:Newsreader,Georgia,serif;font-weight:400;font-size:20px;margin-bottom:6px}
+.priv span{color:var(--muted);font-size:14.5px;line-height:1.6}
+.honest{color:var(--muted);font-size:14px;margin:22px 0 0;max-width:80ch}
+
+.faq{max-width:780px;margin-top:30px}
+.faq details{border-bottom:1px solid var(--line);padding:18px 0}
+.faq summary{cursor:pointer;list-style:none;font-family:Newsreader,Georgia,serif;font-size:21px;display:flex;justify-content:space-between;gap:16px}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{content:"+";color:var(--accent);font-family:Manrope,sans-serif}
+.faq details[open] summary::after{content:"–"}
+.faq p{color:var(--muted);line-height:1.7;margin:10px 0 0;max-width:68ch}
+
+.end{text-align:center;padding:92px 28px}
+.end h2{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:46px;line-height:1.12;margin:0}
+.end h2 em{color:var(--accent);display:block}
+.end .cta{justify-content:center;margin-top:28px}
+.made{color:var(--muted);font-size:14px;text-align:center;margin:0;padding:18px 20px;border-top:1px solid var(--line);background:var(--panel)}
+.made b{color:var(--ink);font-weight:600}
+.made i{color:var(--accent);font-style:normal}
+
+@media(max-width:920px){
+  .nav nav a.hide{display:none}
+  .hero{grid-template-columns:1fr;gap:40px;padding:48px 18px 44px}.hero h1{font-size:42px}
+  .steps,.priv{grid-template-columns:1fr}.feat{grid-template-columns:1fr;gap:28px;margin-top:56px}.feat.flip .txt{order:0}
+  h2.big{font-size:32px}h3.s{font-size:26px}section.block{padding:56px 0}.end h2{font-size:34px}.w{padding:0 18px}
+  .tline{grid-template-columns:70px 1fr}.tline b{display:none}
+}
+{% endblock %}
+{% block body %}
+<header class="nav"><div class="w">
+  <a class="brand" href="{{ url_for('home') }}">Meeting Agent <i></i></a>
+  <nav>
+    <a class="hide" href="#how">How it works</a><a class="hide" href="#features">Features</a><a class="hide" href="#privacy">Privacy</a><a class="hide" href="#faq">Questions</a>
+    {% if signed_in %}<a class="btn accent" href="{{ url_for('index') }}">Open dashboard</a>
+    {% else %}<a class="btn ghost" href="{{ url_for('login') }}">Sign in</a>
+    <a class="btn accent" href="{{ url_for('signup') }}">Get started</a>{% endif %}
+  </nav>
+</div></header>
+
+<div class="w hero">
+  <div>
+    <h1>Skip the call.<br><em>Keep the decisions.</em></h1>
+    <p class="lead">A notetaker bot joins your Teams and Google Meet calls, understands Hindi, Telugu and English even when they are mixed, and sends you what was decided and who owes what. Even when you weren't there.</p>
+    <div class="cta">{% if signed_in %}<a class="btn accent" href="{{ url_for('index') }}">Open dashboard</a>{% else %}<a class="btn accent" href="{{ url_for('signup') }}">Get started free</a>{% endif %}<a class="btn ghost" href="#how">See how it works</a></div>
+    <p class="fine">Free to start · Nothing to install · Set up in about 5 minutes</p>
+  </div>
+  <div class="mock" aria-label="Sample report card">
+    <span class="tag">SAMPLE REPORT CARD</span>
+    <div class="ttl">Weekly sync</div>
+    <div class="facts"><span>Started <b>10:00 AM</b></span><span>Duration <b>28 min</b></span><span>Score <b>7.5 / 10</b></span></div>
+    <h4>Summary</h4>
+    <p>The team reviewed last week's outage and agreed to move the release by one week so the fix can be tested properly.</p>
+    <h4>Key decisions</h4>
+    <ul><li>Release moves to 12 October</li><li>Cache limits go in before the release</li></ul>
+    <h4>Action items</h4>
+    <ul><li>Finish load tests · Owner: Zeeshan · Due: Friday</li><li>Call the vendor about the delay · Owner: Amir</li></ul>
+  </div>
+</div>
+
+<div class="strip"><div class="w">
+  <span>Works with <b>Microsoft Teams</b></span><i></i><span><b>Google Meet</b></span><i></i><span>Understands <b>Hindi</b>, <b>Telugu</b> and <b>English</b>, even mixed</span><i></i><span>Reports in <b>English</b></span>
+</div></div>
+
+<section class="block" id="how"><div class="w">
+  <p class="eyebrow">How it works</p>
+  <h2 class="big">Before, during and after every meeting.</h2>
+  <div class="steps">
+    <div class="step"><span class="n">BEFORE</span><h3>Walk in prepared</h3><p>Ten minutes before the meeting you get a short brief: what was decided last time, which tasks are still open, and what is still unanswered.</p></div>
+    <div class="step"><span class="n">DURING</span><h3>The bot takes the notes</h3><p>It joins as a visible participant with your name on it, says hello in the chat, and then only listens. Join yourself, or let it go in your place.</p></div>
+    <div class="step"><span class="n">AFTER</span><h3>Everything, in minutes</h3><p>The report card arrives by email and on your dashboard, with the transcript, the recording, the tasks, and a chatbot you can question.</p></div>
+  </div>
+</div></section>
+
+<section class="block alt" id="features"><div class="w">
+  <p class="eyebrow">What you get</p>
+  <h2 class="big">More than a summary.</h2>
+  <p class="sub">Every meeting becomes something you can read in a minute, search in a second, and act on.</p>
+
+  <div class="feat">
+    <div class="txt">
+      <h3 class="s">A chatbot that was in the room</h3>
+      <p class="d">Ask anything about a meeting, by typing or by voice, in English, Hinglish, Hindi or Telugu. It answers with the exact lines from the meeting, so you can check it.</p>
+      <ul class="ticks"><li>Shows the quoted lines as proof under every answer</li><li>Can tick a task, rename a meeting or email a report, after you press Confirm</li><li>Works while the meeting is still running: "What have I missed so far?"</li></ul>
+    </div>
+    <div class="mock"><span class="tag">SAMPLE</span>
+      <div class="bub u">kya decide hua release ke baare me?</div>
+      <div class="bub b">Release ek hafta aage badha kar 12 October kar diya gaya hai, taaki fix ko theek se test kiya ja sake.
+        <span class="quote"><span class="mono">10:14 AM</span> <b>Inam</b> Let's move the release to the 12th so Zeeshan can finish the load tests.</span></div>
+      <div class="bub u">mark the load test task as done</div>
+      <div class="bub b">I'll tick that off for you.
+        <div class="confirm">Mark this task as done: “Finish load tests”<br><span>Confirm</span><span>Cancel</span></div></div>
+    </div>
+  </div>
+
+  <div class="feat flip">
+    <div class="txt">
+      <h3 class="s">Every word, and the recording</h3>
+      <p class="d">The full transcript with speaker names and times. Search it, download it, or click any line to hear that exact moment.</p>
+      <ul class="ticks"><li>Chapters split the meeting into topics</li><li>See who spoke when, and how much</li><li>Minutes of Meeting ready to print as a PDF</li></ul>
+    </div>
+    <div class="mock"><span class="tag">SAMPLE</span>
+      <div class="player"><span class="pl"></span><span class="mono">10:14 / 28:02</span><span class="ln"></span></div>
+      <div class="tline"><span class="mono">10:12 AM</span><b>Sameer</b><span>The outage came from the cache filling up.</span></div>
+      <div class="tline on"><span class="mono">10:14 AM</span><b>Inam</b><span>Let's move the release to the 12th so Zeeshan can finish the load tests.</span></div>
+      <div class="tline"><span class="mono">10:15 AM</span><b>Zeeshan</b><span>Friday tak ho jayega, I'll share the numbers.</span></div>
+      <div class="tline"><span class="mono">10:17 AM</span><b>Amir</b><span>Vendor ka call abhi pending hai.</span></div>
+    </div>
+  </div>
+
+  <div class="feat">
+    <div class="txt">
+      <h3 class="s">Tasks that don't get forgotten</h3>
+      <p class="d">Every action item from every meeting lands on one page, with its owner and due date. At the next meeting, a promise tracker shows what actually happened.</p>
+      <ul class="ticks"><li>Done, in progress, stuck or not mentioned, for each earlier task</li><li>Tasks reported as finished are ticked off for you</li></ul>
+    </div>
+    <div class="mock"><span class="tag">SAMPLE</span>
+      <div class="task"><span class="box y"></span><div>Finish load tests<small>Zeeshan · due Friday</small></div><span class="pill done">Done</span></div>
+      <div class="task"><span class="box"></span><div>Call the vendor about the delay<small>Amir</small></div><span class="pill stuck">Stuck</span></div>
+      <div class="task"><span class="box"></span><div>Write the handover note<small>Mahin · due 12 Oct</small></div><span class="pill prog">In progress</span></div>
+      <div class="task"><span class="box"></span><div>Update the release checklist<small>No owner</small></div><span class="pill">Not mentioned</span></div>
+    </div>
+  </div>
+
+  <div class="feat flip">
+    <div class="txt">
+      <h3 class="s">A score for every meeting</h3>
+      <p class="d">Out of 10, with the reason for every point. It is plain maths, not an opinion: what came out of the meeting, how balanced the talking was, and whether tasks have an owner and a date.</p>
+      <ul class="ticks"><li>One tip for next time</li><li>Participation and attendance for every person who spoke</li></ul>
+    </div>
+    <div class="mock"><span class="tag">SAMPLE</span>
+      <div class="scoretop"><span class="ttl">Meeting score</span><b>7.5<small> / 10</small></b></div>
+      <div class="sbar"><span>Outcomes</span><i style="--v:100%"></i><span>4/4</span></div>
+      <div class="sbar"><span>Balance</span><i style="--v:66%"></i><span>2/3</span></div>
+      <div class="sbar"><span>Clarity</span><i style="--v:50%"></i><span>1/2</span></div>
+      <div class="sbar"><span>Length</span><i style="--v:100%"></i><span>1/1</span></div>
+      <div class="tipline"><span class="mono">TIP</span> Give every task one owner and a date before the meeting ends.</div>
+    </div>
+  </div>
+</div></section>
+
+<section class="block" id="privacy"><div class="w">
+  <p class="eyebrow">Privacy</p>
+  <h2 class="big">Nothing happens behind anyone's back.</h2>
+  <div class="priv">
+    <div><b>Always visible</b><span>The bot joins as a named participant, someone has to let it in, and it says hello in the chat.</span></div>
+    <div><b>Only yours</b><span>You see only your own meetings. Nobody else's account can open them.</span></div>
+    <div><b>Keys encrypted</b><span>Your keys are stored encrypted. Passwords and sign-in codes are kept only as hashes.</span></div>
+    <div><b>Delete any time</b><span>Remove a single meeting, or your whole account, whenever you want.</span></div>
+  </div>
+  <p class="honest">To be straight with you: the audio is handled by Vexa, the service the bot runs on, and reports are written with Google Gemini. Please don't use Meeting Agent for confidential meetings, and tell people when a meeting is being recorded.</p>
+</div></section>
+
+<section class="block alt" id="faq"><div class="w">
+  <p class="eyebrow">Questions</p>
+  <h2 class="big">The things people ask first.</h2>
+  <div class="faq">
+    <details><summary>Is it free?</summary><p>Meeting Agent itself is free. The bot runs on your own Vexa account, and every new Vexa account includes about 4 hours of meetings free. After that, Vexa charges roughly half a dollar per meeting hour, paid to Vexa directly.</p></details>
+    <details><summary>Does it record without people knowing?</summary><p>No. The bot is a visible participant with a name like "Sameer's Notetaker", someone in the meeting has to admit it, and it posts a hello message in the chat. Whether recording is allowed depends on your company's rules and local law, so tell everyone first.</p></details>
+    <details><summary>Do I have to be in the meeting?</summary><p>No. That is the main idea: the bot attends in your place and you read the report card afterwards. You can also attend yourself and still let it take the notes.</p></details>
+    <details><summary>Which meetings and languages does it support?</summary><p>Microsoft Teams and Google Meet. It understands Hindi, Telugu and English, even mixed in one sentence, and writes the report in English. Zoom is not supported yet.</p></details>
+    <details><summary>How do I start?</summary><p>Create an account, confirm your email with the 6-digit code, then follow the Set up page: add two free keys from Vexa, paste a meeting link, and press Send bot. It takes about 5 minutes.</p></details>
+    <details><summary>What can't it do?</summary><p>It records audio, not video. It can't read messages typed in the meeting chat, and it only knows people who spoke or were invited, so someone who stayed silent won't show in attendance.</p></details>
+  </div>
+</div></section>
+
+<div class="w end">
+  <h2>Be absent from the meeting.<em>Never from the outcome.</em></h2>
+  <div class="cta">{% if signed_in %}<a class="btn accent" href="{{ url_for('index') }}">Open dashboard</a>{% else %}<a class="btn accent" href="{{ url_for('signup') }}">Get started free</a><a class="btn ghost" href="{{ url_for('login') }}">Sign in</a>{% endif %}</div>
+</div>
+<p class="made">Made by <b>Sameer &amp; team</b> <i>●</i> so you never miss a meeting.</p>
+{% include "_help_chat.html" %}
+{% endblock %}

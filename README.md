@@ -244,7 +244,8 @@ none. Questions it couldn't answer are saved (text only) for the owner.
 ### Pages
 | Method   | Path                          | Purpose                                         |
 |----------|-------------------------------|-------------------------------------------------|
-| GET      | `/`                           | Dashboard: bot status, coming up, report cards  |
+| GET      | `/`                           | Front page for visitors; dashboard (bot status, coming up, report cards) when signed in |
+| GET      | `/home`                       | The front page, also for signed-in users        |
 | GET      | `/setup`                      | Guided 5-step onboarding                        |
 | GET      | `/report/<id>`                | Report card, transcript, chapters, score, promises, participation, mentions, attendance |
 | GET      | `/report/<id>/mom`            | Printable Minutes of Meeting                    |

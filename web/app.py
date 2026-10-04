@@ -222,6 +222,12 @@ def _code_message(result, email):
     }[result]
 
 
+@app.route("/home")
+def home():
+    """The public front page: what Meeting Agent is. Signed-in users can open it here too."""
+    return render_template("home.html", signed_in=bool(_signed_in_user()))
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if session.get("uid") and request.method == "GET":
@@ -376,10 +382,24 @@ def _safe(fn, default):
         return default
 
 
+def _signed_in_user():
+    uid = session.get("uid")
+    g.user = Session.get(User, uid) if uid else None
+    return g.user
+
+
 @app.route("/")
-@login_required
-@needs_keys
 def index():
+    """Visitors see the front page; signed-in users go straight to their dashboard."""
+    u = _signed_in_user()
+    if not u:
+        return render_template("home.html", signed_in=False)
+    if not u.ready:
+        return redirect(url_for("setup"))
+    return _dashboard()
+
+
+def _dashboard():
     u = g.user
     g.api_error = None
     bots, upcoming, cals = [], [], []
