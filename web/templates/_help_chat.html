@@ -48,9 +48,10 @@
 (function () {
   // Each entry: the question shown as a button, words that point to it when typed, and the answer.
   // q: shown as a button when chip is true.  k: words and phrases that point to this answer.
+  // weak: words that point here only when no other answer matches.
   // a: the answer.  more: what to say when the visitor then asks for "more".
   var FAQ = [
-    {chip: true, q: 'What is Meeting Agent?', k: ['meeting agent', 'this app', 'this site', 'this website', 'this tool', 'feature', 'features', 'overview', 'what is this', 'what is it', 'what does it do', 'what does this do', 'what can it do', 'what it does', 'ye kya hai', 'yeh kya hai', 'kya hai ye', 'kya karta hai ye'],
+    {chip: true, q: 'What is Meeting Agent?', weak: ['meeting agent', 'this app', 'this site', 'this website', 'this tool'], k: ['feature', 'features', 'overview', 'what is this', 'what is it', 'what does it do', 'what does this do', 'what can it do', 'what it does', 'ye kya hai', 'yeh kya hai', 'kya hai ye', 'kya karta hai ye'],
      a: 'A bot joins your Microsoft Teams or Google Meet meeting and listens. After the meeting you get a report card: summary, decisions, action items and who said what. You also get the recording, a transcript you can search, a tasks list, and a chatbot you can ask about the meeting.',
      more: 'Here is everything a meeting gives you:\n• Report card by email and on your dashboard\n• Minutes of Meeting you can print as a PDF\n• Full transcript with search, and the audio recording\n• Chapters: the meeting split into topics\n• Who spoke how much, and whose name was mentioned\n• Attendance sheet you can download\n• A meeting score out of 10\n• Tasks page for every action item, and a tracker for promises made last time\n• A chatbot that answers questions about the meeting, by typing or voice'},
     {chip: true, q: 'How do I start?', k: ['start', 'begin', 'sign up', 'signup', 'register', 'new account', 'create account', 'create an account', 'how to use', 'how do i use', 'kaise', 'setup', 'set up', 'steps', 'get started'],
@@ -129,6 +130,8 @@
     FAQ.forEach(function (f) {
       var n = 0;
       f.k.forEach(function (w) { if (t.indexOf(' ' + w + ' ') > -1) n += w.length; });
+      // The app's own name appears in most questions, so it only counts when nothing more specific matched.
+      if (!n && f.weak && f.weak.some(function (w) { return t.indexOf(' ' + w + ' ') > -1; })) n = 0.5;
       if (n > top) { top = n; best = f; }
     });
     return best;
