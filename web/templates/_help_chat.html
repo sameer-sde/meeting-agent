@@ -27,17 +27,25 @@
 .send{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--line)}
 .send input{flex:1}
 .send .btn{width:auto;margin:0}
+.mic{flex:none;width:42px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);cursor:pointer;display:none;place-items:center}
+.mic svg{width:18px;height:18px}
+.mic.on{background:var(--stop);border-color:var(--stop);color:#fff;animation:cb-pulse 1.2s infinite}
+@keyframes cb-pulse{50%{opacity:.6}}
+.cb-voice{margin-left:auto;background:none;border:1px solid var(--line);border-radius:99px;color:var(--muted);font:12px Manrope,sans-serif;padding:4px 10px;cursor:pointer;display:none;white-space:nowrap}
+.cb-voice.on{color:var(--ink);border-color:var(--accent)}
+@media (prefers-reduced-motion:reduce){.mic.on{animation:none}}
 @media(max-width:520px){.cb-btn{right:14px;bottom:14px}.cb-win{left:8px;right:8px;bottom:82px;width:auto;max-width:none}}
 </style>
 {% set bot_icon %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v3"/><circle cx="12" cy="2.5" r="1" fill="currentColor"/><rect x="4" y="6" width="16" height="12" rx="4"/><circle cx="9" cy="12" r="1.2" fill="currentColor"/><circle cx="15" cy="12" r="1.2" fill="currentColor"/><path d="M9.5 15.2c1.5 1 3.5 1 5 0"/><path d="M2 11v3M22 11v3"/><path d="M9 18l-1.5 3 4-3"/></svg>{% endset %}
 <div id="cb">
   <section class="cb-win" id="cb-win" aria-label="Meeting Agent help">
-    <div class="cb-head"><span class="cb-face">{{ bot_icon }}</span><div><b>Meeting Agent help</b><span>Quick answers before you sign in</span></div></div>
+    <div class="cb-head"><span class="cb-face">{{ bot_icon }}</span><div><b>Meeting Agent help</b><span>Quick answers</span></div><button type="button" class="cb-voice" id="cb-voice" aria-pressed="false">🔈 Read aloud: off</button></div>
     <div class="msgs" id="msgs" aria-live="polite">
       <div class="msg bot">Hi 👋 How can I help you?<br>Tap a question, or type your own.</div>
     </div>
     <div class="chips" id="chips"></div>
     <form class="send" id="chatform">
+      <button type="button" class="mic" id="mic" aria-label="Speak your question"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></button>
       <input type="text" id="question" maxlength="200" placeholder="Ask about Meeting Agent" aria-label="Your question" autocomplete="off">
       <button class="btn accent" id="askbtn">Send</button>
     </form>
@@ -163,8 +171,70 @@
   }
   toggle.addEventListener('click', function () { show(!cb.classList.contains('cb-open')); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') show(false); });
+  // ---- voice: speak the question, hear the answer (Chrome and Edge) ----
+  var Rec = window.SpeechRecognition || window.webkitSpeechRecognition, synth = window.speechSynthesis;
+  var mic = document.getElementById('mic'), voiceBtn = document.getElementById('cb-voice'), readAloud = false;
+  var GOOD = [/natural/i, /^google/i, /neural|premium|enhanced|siri/i, /samantha|karen|moira|tessa|veena|lekha|heera|neerja|swara/i];
+  function bestVoice(lang) {
+    var short = lang.slice(0, 2), list = synth.getVoices().filter(function (v) { return v.lang.replace('_', '-').slice(0, 2) === short; });
+    function rank(v) {
+      var name = v.name, r = GOOD.length;
+      for (var i = 0; i < GOOD.length; i++) if (GOOD[i].test(name)) { r = i; break; }
+      var region = v.lang.replace('_', '-') === lang ? 0 : /en-(GB|US)/.test(v.lang.replace('_', '-')) ? 1 : 2;
+      return r * 10 + region + (/male/i.test(name) && !/female/i.test(name) ? 5 : 0);
+    }
+    list.sort(function (x, y) { return rank(x) - rank(y); });
+    return list[0] || null;
+  }
+  if (synth && synth.getVoices) { synth.getVoices(); if ('onvoiceschanged' in synth) synth.onvoiceschanged = function () { synth.getVoices(); }; }
+  function setRead(on) {
+    readAloud = on;
+    voiceBtn.classList.toggle('on', on);
+    voiceBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    voiceBtn.textContent = (on ? '🔊 Read aloud: on' : '🔈 Read aloud: off');
+    if (!on && synth) synth.cancel();
+  }
+  function say(text) {
+    if (!synth || !readAloud || !text) return;
+    synth.cancel();
+    // Links and bullet marks are for the eyes, not the ears.
+    text = text.replace(/:?\s*github\.com\/\S+/g, '.').replace(/[•*_#`>]/g, ' ').replace(/\s+/g, ' ').trim();
+    var voice = bestVoice('en-IN');
+    (text.match(/[^.!?\n]+[.!?]*/g) || [text]).forEach(function (piece) {
+      piece = piece.trim();
+      if (!piece) return;
+      var u = new SpeechSynthesisUtterance(piece);
+      if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = 'en-IN';
+      synth.speak(u);
+    });
+  }
+  if (synth) { voiceBtn.style.display = 'block'; voiceBtn.addEventListener('click', function () { setRead(!readAloud); }); }
+  if (Rec) {
+    mic.style.display = 'grid';
+    var rec = null;
+    mic.addEventListener('click', function () {
+      if (rec) { rec.stop(); return; }
+      rec = new Rec(); rec.lang = 'en-IN'; rec.interimResults = true;
+      var heard = '', box = document.getElementById('question');
+      mic.classList.add('on'); box.placeholder = 'Listening…';
+      rec.onresult = function (e) {
+        heard = [].map.call(e.results, function (r) { return r[0].transcript; }).join(' ');
+        box.value = heard;
+      };
+      rec.onerror = function (e) {
+        if (e.error === 'not-allowed') add('bot', 'I need permission to use the microphone. Allow it in the address bar and try again.');
+      };
+      rec.onend = function () {
+        rec = null; mic.classList.remove('on'); box.placeholder = 'Ask about Meeting Agent';
+        if (heard.trim()) { box.value = ''; if (synth) setRead(true); reply(heard.trim()); }
+      };
+      rec.start();
+    });
+  }
+
   var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches, typing = null;
   function add(cls, text, typed) {
+    if (cls === 'bot' && typed) say(text);
     var d = document.createElement('div'); d.className = 'msg ' + cls;
     msgs.appendChild(d);
     if (typing) { clearInterval(typing.timer); typing.el.textContent = typing.text; typing = null; }   // finish the last one at once
