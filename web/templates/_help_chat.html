@@ -48,7 +48,7 @@
 (function () {
   // Each entry: the question shown as a button, words that point to it when typed, and the answer.
   // q: shown as a button when chip is true.  k: words and phrases that point to this answer.
-  // weak: words that point here only when no other answer matches.
+  // weak: words that point here only when no other answer matches.  low: a catch-all answer that loses to any real topic.
   // a: the answer.  more: what to say when the visitor then asks for "more".
   var FAQ = [
     {chip: true, q: 'What is Meeting Agent?', weak: ['meeting agent', 'this app', 'this site', 'this website', 'this tool'], k: ['feature', 'features', 'overview', 'what is this', 'what is it', 'what does it do', 'what does this do', 'what can it do', 'what it does', 'ye kya hai', 'yeh kya hai', 'kya hai ye', 'kya karta hai ye'],
@@ -72,6 +72,9 @@
     {chip: true, q: "I can't sign in", k: ['sign in', 'signin', 'login', 'log in', 'password', 'forgot', 'otp', 'verification code', 'the code', 'cant', "can't", 'cannot', 'not working', 'continue with google', 'otp not', 'code not', 'no otp', 'no code', 'otp not received', 'code not received', 'did not get the code', 'didnt get the code', 'google sign in', 'google login'],
      a: 'If you forgot your password, press "Forgot password?" and we email you a 6-digit code. If the code email does not arrive, check your Spam or Junk folder. If "Continue with Google" shows an error, use "Create an account" with your email instead.',
      more: 'The code is valid for 15 minutes and allows 5 tries. You can ask for a new code after 45 seconds. If you first signed in with Google, the same email works with a password too: use "Forgot password?" once to set one.'},
+    {low: true, q: 'Everything', k: ['everything', 'every thing', 'tell me everything', 'tell me all', 'all about', 'all of it', 'all features', 'full details', 'complete details', 'in detail', 'whole thing', 'sab kuch', 'sab batao', 'sab', 'poora', 'pura'],
+     a: 'Here is everything in short.\n\nMeeting Agent sends a bot into your Microsoft Teams or Google Meet meeting. It listens, in Hindi, Telugu, English or a mix, and afterwards gives you:\n• A report card: summary, decisions, action items, who said what\n• Minutes of Meeting you can print as a PDF\n• The full transcript with search, and the audio recording\n• Chapters, who spoke how much, and an attendance sheet\n• A meeting score out of 10\n• One Tasks page for every action item, and a tracker for promises made last time\n• A chatbot that answers questions about the meeting, by typing or voice\n\nIt is free to start, and it was built by Sameer Ahmed and team. Ask me about any one of these to know more, for example "how do I start" or "is it free".',
+     more: 'To go deeper, pick a topic: how to start, the cost, languages, privacy, how the bot joins, the report card, the recording, tasks, the chatbot, Telegram and calendar.'},
     {q: 'The chatbot', k: ['chatbot', 'chat bot', 'ask questions', 'voice', 'speak', 'talk to', 'assistant'],
      a: 'After you sign in, a chatbot sits in the corner of every page. Ask it anything about a meeting, by typing or by voice, in English, Hinglish, Hindi or Telugu. It shows the exact lines from the meeting as proof.',
      more: 'It can also do things for you after you press Confirm: mark a task as done, rename a meeting, email a report to someone, or send the bot to a meeting. While a meeting is still running you can ask it "what have I missed so far?".'},
@@ -145,6 +148,7 @@
     [/\b(thanks|thank you|thank u|thx|shukriya|dhanyavad)\b/i, 'Happy to help. Ask me anything else about Meeting Agent.'],
     [/\b(how are you|how r u|kaise ho|kya haal)\b/i, 'I am doing well, thank you. What would you like to know about Meeting Agent?'],
     [/\b(who are you|your name|what are you|are you (a )?(bot|human|ai|robot))\b/i, 'I am the Meeting Agent help bot. I answer questions about the app from a list of written answers. After you sign in, a smarter chatbot answers questions about your own meetings.'],
+    [/^\s*(yes|yeah|yep|ya|sure|haan|ha|hmm|help|help me|anything|something|idk|i don'?t know|not sure|what can i ask|what can you do|options|menu)\W*$/i, 'Here is what I can tell you about: what Meeting Agent does, how to start, the cost, languages, privacy, how the bot joins, the report card, recording, tasks, the chatbot, and who built it. Tap a question below, or type "everything" for the full picture.'],
     [/^\s*(bye|goodbye|see you|ok|okay|nice|great|good|cool)\W*$/i, 'Glad that helped. I am here if you need anything else.']
   ];
   var cb = document.getElementById('cb'), toggle = document.getElementById('cb-btn'), msgs = document.getElementById('msgs');
@@ -180,6 +184,7 @@
       f.k.forEach(function (w) { if (t.indexOf(' ' + w + ' ') > -1) n += w.length; });
       // The app's own name appears in most questions, so it only counts when nothing more specific matched.
       if (!n && f.weak && f.weak.some(function (w) { return t.indexOf(' ' + w + ' ') > -1; })) n = 0.5;
+      if (n && f.low) n = 0.7;      // a catch-all answer: any real topic in the sentence beats it
       if (n > top) { top = n; best = f; }
     });
     return best;
