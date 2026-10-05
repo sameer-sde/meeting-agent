@@ -408,7 +408,7 @@ def _dashboard():
         upcoming = _safe(lambda: vexa.upcoming(u.tx_key), [])[:10]
         cals = _safe(lambda: vexa.calendars(u.bot_key), [])
     q = request.args.get("q", "").strip()[:100]
-    found = Session.query(Meeting).filter(Meeting.user_id == u.id, Meeting.status.in_(["done", "error"]))
+    found = Session.query(Meeting).filter(Meeting.user_id == u.id, Meeting.status.in_(["done", "error", "writing"]))
     if q:
         # the title, the report card and every spoken line (which includes speaker names)
         like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
@@ -596,6 +596,25 @@ def delete_meeting(rid):
     Session.commit()
     flash(f"“{title}” was deleted.")
     return redirect(url_for("index"))
+
+
+@app.post("/report/<int:rid>/retry")
+@login_required
+def retry_report(rid):
+    """Write a failed report again (for example after the free AI limit was full)."""
+    m = _own_meeting(rid)
+    if m.status != "error" or not g.user.ready:
+        return redirect(url_for("report", rid=rid))
+    m.tries = 0
+    row = tasks.write_report(Session(), g.user, m)
+    if row.status == "done":
+        flash("The report is written. It has also been emailed.")
+    elif row.status == "empty":
+        flash("Nothing was said in this meeting, so there is no report to write.")
+        return redirect(url_for("index"))
+    else:
+        flash("It failed again. " + (row.report_md or "") + " Wait a few minutes and try once more.")
+    return redirect(url_for("report", rid=rid))
 
 
 @app.post("/report/<int:rid>/rename")

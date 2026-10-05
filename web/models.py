@@ -149,7 +149,7 @@ class Meeting(Base):
     platform: Mapped[str] = mapped_column(String(32), default="")
     native_id: Mapped[str] = mapped_column(String(255), default="")
     title: Mapped[str] = mapped_column(String(500), default="")
-    status: Mapped[str] = mapped_column(String(32), default="done")  # done | empty | skipped | error | deleted
+    status: Mapped[str] = mapped_column(String(32), default="done")  # writing | done | empty | skipped | error | deleted
     report_md: Mapped[str] = mapped_column(Text, default="")
     transcript_json: Mapped[str] = mapped_column(Text, default="")
     mom_md: Mapped[str] = mapped_column(Text, default="")
@@ -157,6 +157,8 @@ class Meeting(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     duration_min: Mapped[int | None] = mapped_column(Integer, nullable=True)  # None = not worked out yet
+    tries: Mapped[int | None] = mapped_column(Integer, nullable=True)        # attempts at writing the report
+    writing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # last attempt began
     followups_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # promise tracker; None = not looked for
     chapters_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # None = not looked for yet
     recording_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # where the audio is, once found

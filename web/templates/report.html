@@ -53,6 +53,8 @@ pre{white-space:pre-wrap;font:12px/1.6 'JetBrains Mono',monospace;color:var(--mu
 .wide{overflow-x:auto}
 .pop>summary{cursor:pointer;list-style:none}
 .pop>summary::-webkit-details-marker{display:none}
+.fail{border-color:#5A3B2A;background:#2B241E}
+.fail .btn{margin-top:6px}
 .copies{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin:-6px 0 6px}
 .chipbtn{font:600 12px Manrope,sans-serif;color:var(--ink);background:none;border:1px solid var(--line);border-radius:99px;padding:6px 12px;cursor:pointer}
 .chipbtn:hover{border-color:var(--accent)}
@@ -153,6 +155,15 @@ p.more{margin:14px 0 0}
     <a href="#card">Report card</a>{% if followups %}<a href="#promises">Promises</a>{% endif %}{% if score %}<a href="#score">Score</a>{% endif %}<a href="#chapters">Chapters</a><a href="#transcript">Transcript</a><a href="#speakers">Speakers</a><a href="#participation">Participation</a><a href="#mentions">Mentions</a><a href="#attendance">Attendance</a>
   </nav>
 
+  {% if m.status == 'error' %}
+  <section class="panel fail">
+    <h2>This report could not be written</h2>
+    <p class="hint">This usually means the free AI limit was full at that moment. The meeting itself is safe. Wait a few minutes and try again.</p>
+    <form method="post" action="{{ url_for('retry_report', rid=m.id) }}"><button class="btn accent">Try again</button></form>
+  </section>
+  {% elif m.status == 'writing' %}
+  <section class="panel fail"><h2>This report is being written</h2><p class="hint">It usually takes a few minutes after the meeting ends. Refresh this page in a moment.</p></section>
+  {% endif %}
   <section class="panel" id="card">
     <div class="copies">
       {% if copies.summary %}<button type="button" class="chipbtn" data-copy="summary">Copy summary</button>{% endif %}

@@ -120,7 +120,7 @@ a.row:hover{background:var(--panel2)}
       <li><a class="row" href="{{ url_for('report', rid=r.id) }}">
         <span class="day"><b>{{ r.created_at|local('%d') }}</b><span>{{ r.created_at|local('%b') }}</span></span>
         <span>{{ r.title }}</span>
-        {% if r.status == 'error' %}<span class="tag error">failed</span>{% else %}{% set t = times(r) %}<span class="mono">{{ t.clock or r.created_at|local('%I:%M %p') }}{% if t.duration %} · {{ t.duration }}{% endif %}</span>{% endif %}
+        {% if r.status == 'error' %}<span class="tag error">failed · open to try again</span>{% elif r.status == 'writing' %}<span class="tag">being written…</span>{% else %}{% set t = times(r) %}<span class="mono">{{ t.clock or r.created_at|local('%I:%M %p') }}{% if t.duration %} · {{ t.duration }}{% endif %}</span>{% endif %}
       </a></li>
     {% endfor %}</ul>
     {% elif q %}<p class="empty">No report card matches "{{ q }}".</p>

@@ -312,61 +312,115 @@ def share_report(user, row, emails, link):
                                     f"\"{row.title}\"{tail}. These notes were taken by {user.agent_name}.")
 
 
+STALE_MINUTES = 8      # a report still "writing" after this long was cut off, and is tried again
+MAX_TRIES = 3
+
+
 def process_finished(db, user):
-    done_ids = {v for (v,) in db.query(Meeting.vexa_id).filter(Meeting.user_id == user.id)}
+    """Write up meetings that have ended. Safe when two runs overlap, and when a run is cut off."""
+    from sqlalchemy.exc import IntegrityError
+    known = {v for (v,) in db.query(Meeting.vexa_id).filter(Meeting.user_id == user.id)}
     finished = vexa.meetings(user.tx_key, "completed", 50)
     if not user.baseline_done:
         # First run for this user: don't flood them with reports for old meetings.
         for m in finished:
-            if m["id"] not in done_ids:
+            if m["id"] not in known:
                 db.add(Meeting(user_id=user.id, vexa_id=m["id"], platform=m.get("platform") or "",
                                native_id=m.get("native_meeting_id") or "", title=vexa.title_of(m), status="skipped"))
         user.baseline_done = True
         return 0
     made = 0
+    by_id = {m["id"]: m for m in finished}
+    now = datetime.now(timezone.utc)
+
+    # 1. Reports that were started but never finished (the run was cut off part-way).
+    for row in db.query(Meeting).filter_by(user_id=user.id, status="writing").all():
+        began = _aware(row.writing_at) or _aware(row.created_at)
+        if began and now - began < timedelta(minutes=STALE_MINUTES):
+            continue                                  # another run may still be working on it
+        if (row.tries or 0) >= MAX_TRIES:
+            row.status = "error"
+            row.report_md = ("Couldn't write this report: it kept running out of time. "
+                             "Open it and press Try again.")
+            db.commit()
+            continue
+        write_report(db, user, row, by_id.get(row.vexa_id))
+        made += 1
+
+    # 2. Meetings seen for the first time. Claim each one first, so an overlapping run skips it.
     for m in finished:
-        if m["id"] in done_ids:
+        if m["id"] in known:
             continue
         row = Meeting(user_id=user.id, vexa_id=m["id"], platform=m.get("platform") or "",
-                      native_id=m.get("native_meeting_id") or "", title=vexa.title_of(m))
-        try:
-            data = vexa.transcript(user.tx_key, m["id"])
-            row.transcript_json = json.dumps(data.get("segments", []), ensure_ascii=False, indent=1)
-            lines = reports.clean_lines(data)
-            row.participants_json = json.dumps(
-                vexa.participants(user.tx_key, row.platform, row.native_id), ensure_ascii=False)
-            fill_times(row, *vexa.times_of(m))
-            if not lines:
-                row.status = "empty"
-            else:
-                row.report_md = reports.make_report(lines)
-                row.status = "done"
-                try:
-                    row.created_at = row.created_at or datetime.now(timezone.utc)
-                    row.mom_md = build_mom(db, user, row, lines)
-                except Exception:
-                    traceback.print_exc()  # the report card still goes out; MOM can be made later
-        except Exception as e:  # keep going for other meetings
-            row.status = "error"
-            row.report_md = f"Couldn't write this report: {e}"
+                      native_id=m.get("native_meeting_id") or "", title=vexa.title_of(m),
+                      status="writing", tries=0, writing_at=now)
         db.add(row)
-        db.flush()
-        if row.platform and row.native_id:  # a chat started while the meeting was running stays with it
-            db.query(ChatMessage).filter_by(user_id=user.id, meeting_id=None,
-                                            live_key=f"{row.platform}:{row.native_id}").update({"meeting_id": row.id})
-        if row.status == "done":
-            try:
-                build_extras(db, user, row)
-            except Exception:
-                traceback.print_exc()  # chapters and tasks can be made later from the report page
-            base = os.environ.get("PUBLIC_URL", "").rstrip("/")
-            link = f"{base}/report/{row.id}" if base else None
-            try:
-                email_report(user, row, link)
-            except Exception:
-                traceback.print_exc()
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()                             # another run claimed it a moment ago
+            continue
+        write_report(db, user, row, m)
         made += 1
     return made
+
+
+def write_report(db, user, row, m=None):
+    """Write one meeting's report, saving after every step so nothing is lost if the run is cut off.
+
+    Order matters: the report card is saved and emailed first; the Minutes of Meeting and the
+    chapters, tasks and promise tracker follow, and each can be redone later from the report page.
+    m: the meeting as Vexa lists it (for its start and end time); None on a retry.
+    """
+    row.tries = (row.tries or 0) + 1
+    row.writing_at = datetime.now(timezone.utc)
+    row.status = "writing"
+    db.commit()
+    try:
+        data = vexa.transcript(user.tx_key, row.vexa_id)
+        row.transcript_json = json.dumps(data.get("segments", []), ensure_ascii=False, indent=1)
+        lines = reports.clean_lines(data)
+        row.participants_json = json.dumps(
+            vexa.participants(user.tx_key, row.platform, row.native_id), ensure_ascii=False)
+        row.duration_min = None                       # worked out again from this transcript
+        fill_times(row, *(vexa.times_of(m) if m else (None, None)))
+        if not lines:
+            row.status = "empty"
+            db.commit()
+            return row
+        row.report_md = reports.make_report(lines)
+        row.status = "done"
+        db.commit()                                   # the report card is safe from here on
+    except Exception as e:
+        db.rollback()
+        traceback.print_exc()
+        row.status = "error"
+        row.report_md = f"Couldn't write this report: {e}"
+        db.commit()
+        return row
+
+    if row.platform and row.native_id:  # a chat started while the meeting was running stays with it
+        db.query(ChatMessage).filter_by(user_id=user.id, meeting_id=None,
+                                        live_key=f"{row.platform}:{row.native_id}").update({"meeting_id": row.id})
+        db.commit()
+    base = os.environ.get("PUBLIC_URL", "").rstrip("/")
+    try:
+        email_report(user, row, f"{base}/report/{row.id}" if base else None)
+    except Exception:
+        traceback.print_exc()
+    try:
+        row.mom_md = build_mom(db, user, row, lines)
+        db.commit()
+    except Exception:
+        db.rollback()
+        traceback.print_exc()           # the MOM can be written later from its page
+    try:
+        build_extras(db, user, row)
+        db.commit()
+    except Exception:
+        db.rollback()
+        traceback.print_exc()           # chapters and tasks can be made later from the report page
+    return row
 
 
 def _aware(dt):
