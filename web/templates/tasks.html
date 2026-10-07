@@ -17,6 +17,10 @@
 .info a{color:var(--muted)}
 .link{background:none;border:0;color:var(--muted);font:600 13px Manrope,sans-serif;cursor:pointer;padding:2px 4px}
 .link:hover{color:var(--stop)}
+.due{font-weight:600;border-radius:999px;padding:1px 10px;border:1px solid var(--line);color:var(--ink)}
+.due.overdue{color:#F2A08C;border-color:#6B3A2E;background:#2E1F1B}
+.due.today,.due.soon{color:var(--gold);border-color:#5A4A2A;background:#2B261C}
+.latenote{margin:16px 0 0;padding:10px 14px;border-radius:10px;border:1px solid #6B3A2E;background:#2E1F1B;color:#F2A08C;font-weight:600}
 .none{color:var(--muted);padding:18px 0;margin:0}
 {% endblock %}
 {% block page %}
@@ -28,6 +32,7 @@
     <a class="{{ 'on' if show == 'done' }}" href="{{ url_for('tasks_page', show='done') }}">Done · {{ counts.done }}</a>
     <a class="{{ 'on' if show == 'all' }}" href="{{ url_for('tasks_page', show='all') }}">All</a>
   </nav>
+  {% if late and show != 'done' %}<p class="latenote">{{ late }} task{{ 's are' if late != 1 else ' is' }} overdue. {{ 'They are' if late != 1 else 'It is' }} at the top.</p>{% endif %}
   <div class="card">
     {% for t in rows %}
     <div class="task {{ 'isdone' if t.done }}">
@@ -37,7 +42,9 @@
         <div class="what">{{ t.text }}</div>
         <div class="info">
           <span>Owner <b>{{ t.owner or 'Not set' }}</b></span>
-          <span>Due <b>{{ t.due or 'Not set' }}</b></span>
+          {% set d = due[t.id] %}{% if d.state in ('overdue', 'today', 'soon') %}<span class="due {{ d.state }}">{{ d.label }}</span><span>Said: {{ t.due }}</span>
+          {% elif d.state == 'later' and not t.done %}<span>Due <b>{{ d.label }}</b>{% if t.due|lower != d.label|lower %} ({{ t.due }}){% endif %}</span>
+          {% else %}<span>Due <b>{{ t.due or 'Not set' }}</b></span>{% endif %}
           <a href="{{ url_for('report', rid=t.meeting_id) }}">{{ t.meeting.title }} · {{ t.meeting.created_at|local('%d %b') }}</a>
         </div>
       </div>

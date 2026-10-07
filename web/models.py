@@ -157,6 +157,8 @@ class Meeting(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     duration_min: Mapped[int | None] = mapped_column(Integer, nullable=True)  # None = not worked out yet
+    pinned: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)   # kept at the top of the dashboard
+    speaker_map_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # {"name as heard": "corrected name"}
     tries: Mapped[int | None] = mapped_column(Integer, nullable=True)        # attempts at writing the report
     writing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # last attempt began
     followups_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # promise tracker; None = not looked for

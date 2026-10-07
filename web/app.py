@@ -413,8 +413,11 @@ def _dashboard():
         # the title, the report card and every spoken line (which includes speaker names)
         like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
         found = found.filter(Meeting.title.ilike(like, escape="\\") | Meeting.report_md.ilike(like, escape="\\")
-                             | Meeting.transcript_json.ilike(like, escape="\\"))
-    reports = found.order_by(Meeting.created_at.desc()).limit(50).all()
+                             | Meeting.transcript_json.ilike(like, escape="\\")
+                             | Meeting.speaker_map_json.ilike(like, escape="\\"))
+    from sqlalchemy import case
+    reports = found.order_by(case((Meeting.pinned.is_(True), 0), else_=1),      # pinned ones stay on top
+                             Meeting.created_at.desc()).limit(50).all()
     _fill_times(reports)
     steps, _ = setup_state(u)
     return render_template("dashboard.html", bots=bots, upcoming=upcoming, cals=cals,
@@ -593,9 +596,57 @@ def delete_meeting(rid):
     m.report_md = m.transcript_json = m.mom_md = m.participants_json = ""
     m.chapters_json = m.followups_json = m.recording_json = None
     m.started_at = m.ended_at = None
+    m.pinned, m.speaker_map_json = False, None
     Session.commit()
     flash(f"“{title}” was deleted.")
     return redirect(url_for("index"))
+
+
+@app.post("/report/<int:rid>/pin")
+@login_required
+def pin(rid):
+    """Keep a meeting at the top of the list, or let it go back to its place."""
+    m = _own_meeting(rid)
+    m.pinned = not m.pinned
+    Session.commit()
+    flash(f"“{m.title}” is pinned to the top." if m.pinned else f"“{m.title}” is no longer pinned.")
+    return redirect(url_for("index") if request.form.get("next") == "dash" else url_for("report", rid=rid))
+
+
+@app.post("/report/<int:rid>/speaker")
+@login_required
+def fix_speaker(rid):
+    """Correct a speaker's name everywhere in one meeting: transcript, report card, minutes, tasks."""
+    import json
+    import re
+    from . import analytics
+    m = _own_meeting(rid)
+    old = " ".join(request.form.get("old", "").split())[:120]
+    new = " ".join(request.form.get("new", "").split())[:120]
+    back = url_for("report", rid=rid) + "#transcript"
+    if not old or not new or old == new:
+        return redirect(back)
+    if not analytics.rename_speaker(m, old, new):
+        flash(f"Couldn't find a speaker called “{old}” in this meeting.")
+        return redirect(back)
+    if len(old) >= 3:                       # very short names could sit inside other words, so leave the text alone
+        word = re.compile(r"(?<!\w)" + re.escape(old) + r"(?!\w)")
+        swap = lambda text: word.sub(lambda _: new, text) if text else text
+        m.report_md, m.mom_md = swap(m.report_md), swap(m.mom_md)
+        m.chapters_json, m.followups_json = swap(m.chapters_json), swap(m.followups_json)
+        try:                                # who was in the meeting (used for attendance)
+            parts = json.loads(m.participants_json or "[]")
+            for p in parts:
+                if isinstance(p, dict) and p.get("name") == old and p.get("source") != "invite":
+                    p["name"] = new
+            m.participants_json = json.dumps(parts, ensure_ascii=False)
+        except (ValueError, TypeError):
+            pass
+        for t in Session.query(Task).filter_by(meeting_id=m.id):
+            t.owner, t.text = swap(t.owner)[:255], swap(t.text)
+    Session.commit()
+    flash(f"“{old}” now shows as “{new}” in this meeting.")
+    return redirect(back)
 
 
 @app.post("/report/<int:rid>/retry")
@@ -626,7 +677,7 @@ def rename(rid):
         m.title = title
         Session.commit()
         flash("Meeting renamed.")
-    return redirect(url_for("report", rid=rid))
+    return redirect(url_for("index") if request.form.get("next") == "dash" else url_for("report", rid=rid))
 
 
 @app.post("/report/<int:rid>/extras/generate")
@@ -834,7 +885,22 @@ def tasks_page():
     if show in ("open", "done"):
         q = q.filter_by(done=(show == "done"))
     rows = q.order_by(Task.done, Task.created_at.desc(), Task.id).limit(300).all()
-    return render_template("tasks.html", rows=rows, show=show, counts=counts)
+    from . import analytics
+    today = datetime.now(TZ).date()
+    due = {}
+    for t in rows:
+        said_on = (t.meeting.started_at or t.meeting.created_at or t.created_at) if t.meeting else t.created_at
+        if said_on and said_on.tzinfo is None:
+            said_on = said_on.replace(tzinfo=timezone.utc)
+        base = said_on.astimezone(TZ).date() if said_on else today
+        due[t.id] = analytics.due_info(t.due, base, today, done=t.done)
+    order = {"overdue": 0, "today": 1, "soon": 2, "later": 3, "": 4}
+    far = today.replace(year=today.year + 50)
+    # open tasks: late ones first (the oldest deadline on top), then today, then what is coming, then no date
+    rows.sort(key=lambda t: (t.done, order[due[t.id]["state"]] if not t.done else 0,
+                             (due[t.id]["date"] or far) if not t.done else far))
+    late = sum(1 for t in rows if not t.done and due[t.id]["state"] == "overdue")
+    return render_template("tasks.html", rows=rows, show=show, counts=counts, due=due, late=late)
 
 
 def _own_task(tid):

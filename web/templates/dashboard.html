@@ -41,6 +41,23 @@ a.row:hover{background:var(--panel2)}
 .tag.google_meet{color:var(--live);border-color:#3E5A48;background:#22302A}
 .tag.teams{color:var(--teams);border-color:#45467A;background:#26263A}
 .tag.error{color:var(--stop);border-color:#5A3328}
+.item{display:grid;grid-template-columns:1fr auto;align-items:center}
+.item .row{min-width:0}
+.item .row>span:nth-child(2){overflow-wrap:break-word;min-width:0}
+@media(max-width:900px){.item .row{grid-template-columns:48px 1fr;gap:4px 12px;padding-right:4px}.item .row>:nth-child(3){grid-column:2;justify-self:start}.item .row .day{grid-row:1/3}.morebtn{padding:10px 12px}}
+.pinmark{font:600 11px 'JetBrains Mono',monospace;color:var(--gold);border:1px solid #5A4A2A;border-radius:999px;padding:1px 8px;margin-right:8px;white-space:nowrap;vertical-align:2px}
+.morebtn{background:none;border:0;color:var(--muted);font:700 20px Manrope,sans-serif;line-height:1;cursor:pointer;padding:10px 16px;border-radius:10px;letter-spacing:1px}
+.morebtn:hover,.morebtn[aria-expanded=true]{color:var(--ink);background:var(--panel2)}
+.strip{grid-column:1/-1;display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 18px 14px;background:var(--panel2);border-top:1px solid var(--line)}
+.strip[hidden]{display:none}
+.strip form{display:flex;gap:8px;align-items:center;margin:0}
+.strip .ren{flex:1;min-width:240px}
+.strip .ren input{flex:1;min-width:0}
+.strip .btn{padding:8px 14px;font-size:13px}
+.strip details summary{list-style:none;cursor:pointer}
+.strip details summary::-webkit-details-marker{display:none}
+.strip details[open]{display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex-basis:100%}
+.strip details[open] summary{display:none}
 .empty{color:var(--muted);background:var(--panel);border:1px dashed var(--line);border-radius:16px;padding:18px 20px;margin:0 0 40px}
 @media(max-width:900px){.grid{grid-template-columns:1fr;padding:20px 16px 40px}.hero{padding:28px 16px 4px}.hero h1{font-size:34px}.row.up{grid-template-columns:1fr auto}.row.up .mono{grid-column:1/-1}}
 {% endblock %}
@@ -117,14 +134,36 @@ a.row:hover{background:var(--panel2)}
     </form>
     {% if reports %}
     <ul class="list">{% for r in reports %}
-      <li><a class="row" href="{{ url_for('report', rid=r.id) }}">
+      <li class="item"><a class="row" href="{{ url_for('report', rid=r.id) }}">
         <span class="day"><b>{{ r.created_at|local('%d') }}</b><span>{{ r.created_at|local('%b') }}</span></span>
-        <span>{{ r.title }}</span>
+        <span>{% if r.pinned %}<span class="pinmark">Pinned</span>{% endif %}{{ r.title }}</span>
         {% if r.status == 'error' %}<span class="tag error">failed · open to try again</span>{% elif r.status == 'writing' %}<span class="tag">being written…</span>{% else %}{% set t = times(r) %}<span class="mono">{{ t.clock or r.created_at|local('%I:%M %p') }}{% if t.duration %} · {{ t.duration }}{% endif %}</span>{% endif %}
-      </a></li>
+      </a>
+      <button type="button" class="morebtn" aria-expanded="false" aria-controls="more-{{ r.id }}" aria-label="More options for {{ r.title }}" title="Pin, rename or delete">⋯</button>
+      <div class="strip" id="more-{{ r.id }}" hidden>
+        <form method="post" action="{{ url_for('pin', rid=r.id) }}"><input type="hidden" name="next" value="dash"><button class="btn ghost">{{ 'Unpin' if r.pinned else 'Pin to top' }}</button></form>
+        <form class="ren" method="post" action="{{ url_for('rename', rid=r.id) }}"><input type="hidden" name="next" value="dash"><input type="text" name="title" value="{{ r.title }}" maxlength="200" required aria-label="New name for {{ r.title }}"><button class="btn ghost">Rename</button></form>
+        <details><summary class="btn stop">Delete</summary>
+          <span class="hint">Delete this meeting forever? Its report, transcript, tasks and chat all go.</span>
+          <form method="post" action="{{ url_for('delete_meeting', rid=r.id) }}"><button class="btn stop">Yes, delete it</button></form>
+          <button type="button" class="btn ghost" data-no>No, keep it</button>
+        </details>
+      </div></li>
     {% endfor %}</ul>
     {% elif q %}<p class="empty">No report card matches "{{ q }}".</p>
     {% else %}<p class="empty">Report cards show up here a few minutes after a meeting ends.</p>{% endif %}
   </main>
 </div>
+<script>
+document.querySelectorAll('.morebtn').forEach(function(b){
+  b.addEventListener('click',function(){
+    var mine=document.getElementById(b.getAttribute('aria-controls')),show=mine.hidden;
+    document.querySelectorAll('.strip').forEach(function(s){s.hidden=true});
+    document.querySelectorAll('.morebtn').forEach(function(o){o.setAttribute('aria-expanded','false')});
+    mine.hidden=!show;b.setAttribute('aria-expanded',show?'true':'false');
+    mine.querySelectorAll('details').forEach(function(d){d.open=false});
+  });
+});
+document.querySelectorAll('.strip [data-no]').forEach(function(n){n.addEventListener('click',function(){n.closest('details').open=false})});
+</script>
 {% endblock %}

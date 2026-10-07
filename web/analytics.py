@@ -20,7 +20,50 @@ def segments(meeting):
         return []
     if isinstance(data, dict):
         data = data.get("segments", [])
-    return normalise([s for s in data if isinstance(s, dict) and (s.get("text") or "").strip()])
+    segs = normalise([s for s in data if isinstance(s, dict) and (s.get("text") or "").strip()])
+    fixes = speaker_map(meeting)
+    if fixes:                       # names the user corrected; the saved transcript itself is left as it was heard
+        for s in segs:
+            heard = speaker_of(s)
+            if heard in fixes:
+                s["speaker"] = fixes[heard]
+    return segs
+
+
+def speaker_map(meeting):
+    """{"name as heard": "corrected name"} for a meeting."""
+    try:
+        data = json.loads(getattr(meeting, "speaker_map_json", None) or "{}")
+        return {str(k): str(v) for k, v in data.items() if str(v).strip()} if isinstance(data, dict) else {}
+    except (ValueError, TypeError):
+        return {}
+
+
+def rename_speaker(meeting, shown, new):
+    """Record that the speaker currently shown as `shown` should read `new`. Returns how many
+    original names were re-pointed (several, when two mis-heard names are merged into one person)."""
+    fixes = speaker_map(meeting)
+    heard = {speaker_of(s) for s in _raw_segments(meeting)}
+    hit = 0
+    for original in heard:
+        if fixes.get(original, original) == shown:
+            if original == new:
+                fixes.pop(original, None)       # renamed back to what was heard
+            else:
+                fixes[original] = new
+            hit += 1
+    meeting.speaker_map_json = json.dumps(fixes, ensure_ascii=False) if fixes else None
+    return hit
+
+
+def _raw_segments(meeting):
+    try:
+        data = json.loads(meeting.transcript_json or "[]")
+    except (ValueError, TypeError):
+        return []
+    if isinstance(data, dict):
+        data = data.get("segments", [])
+    return [s for s in data if isinstance(s, dict)]
 
 
 def _num(v):
@@ -352,3 +395,109 @@ def score(part_rows, decisions, task_rows, minutes):
     return {"score": round(total / of * 10, 1) if of else 0, "parts": parts,
             "tip": weakest["tip"] if weakest["got"] < weakest["of"] else "A well-run meeting. Keep it this way.",
             "full": task_rows is not None}
+
+
+# ---------- due dates written the way people say them ----------
+
+_MONTHS = {m: i for i, names in enumerate(
+    ["jan january", "feb february", "mar march", "apr april", "may", "jun june", "jul july", "aug august",
+     "sep sept september", "oct october", "nov november", "dec december"], 1) for m in names.split()}
+_DAYS = {d: i for i, names in enumerate(
+    ["mon monday", "tue tues tuesday", "wed weds wednesday", "thu thur thurs thursday", "fri friday",
+     "sat saturday", "sun sunday"]) for d in names.split()}
+
+
+def due_date(text, base):
+    """The calendar date a spoken deadline means, or None when it can't be told.
+
+    text: the deadline as it was said ("Friday", "5th October", "tomorrow", "end of the week").
+    base: the date of the meeting it was said in.
+    """
+    from datetime import date, timedelta
+    import calendar
+    t = re.sub(r"(\d)(st|nd|rd|th)\b", r"\1", (text or "").lower())
+    t = re.sub(r"[,]", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    if not t:
+        return None
+
+    def make(y, m, d):
+        try:
+            return date(y, m, d)
+        except ValueError:
+            return None
+
+    def this_year(m, d):                 # no year was said: the nearest sensible one
+        out = make(base.year, m, d)
+        if out and (base - out).days > 120:
+            out = make(base.year + 1, m, d)
+        return out
+
+    m = re.search(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b", t)
+    if m:
+        return make(int(m[1]), int(m[2]), int(m[3]))
+    m = re.search(r"\b(\d{1,2})[/.](\d{1,2})(?:[/.](\d{2,4}))?\b", t)          # 05/10 or 05/10/2026, day first
+    if m and 1 <= int(m[2]) <= 12:
+        if m[3]:
+            y = int(m[3]) + (2000 if len(m[3]) == 2 else 0)
+            return make(y, int(m[2]), int(m[1]))
+        return this_year(int(m[2]), int(m[1]))
+    names = "|".join(sorted(_MONTHS, key=len, reverse=True))
+    m = re.search(rf"\b(\d{{1,2}}) (?:of )?({names})\b(?: (\d{{4}}))?", t) \
+        or re.search(rf"\b({names}) (\d{{1,2}})\b(?: (\d{{4}}))?", t)
+    if m:
+        a, b, y = m[1], m[2], m[3]
+        day, month = (int(a), _MONTHS[b]) if a.isdigit() else (int(b), _MONTHS[a])
+        return make(int(y), month, day) if y else this_year(month, day)
+
+    if re.search(r"\bday after tomorrow\b", t):
+        return base + timedelta(days=2)
+    if re.search(r"\b(tomorrow|tmrw|tmr)\b", t):
+        return base + timedelta(days=1)
+    if re.search(r"\b(today|tonight|eod|end of (the )?day|this (evening|afternoon|morning)|asap|immediately|right away|now)\b", t):
+        return base
+    m = re.search(r"\b(?:in|within) (\d{1,2}|a|one|two|three) (day|week)s?\b", t)
+    if m:
+        n = {"a": 1, "one": 1, "two": 2, "three": 3}.get(m[1]) or int(m[1])
+        return base + timedelta(days=n * (7 if m[2] == "week" else 1))
+    friday = base + timedelta(days=(4 - base.weekday()) % 7)          # the Friday of this week (or today)
+    if re.search(r"\bnext week\b", t):
+        return friday + timedelta(days=7)
+    if re.search(r"\b(eow|end of (the |this )?week|this week|weekend)\b", t):
+        return friday
+    last = lambda y, mo: make(y, mo, calendar.monthrange(y, mo)[1])
+    if re.search(r"\bnext month\b", t):
+        y, mo = (base.year + 1, 1) if base.month == 12 else (base.year, base.month + 1)
+        return last(y, mo)
+    if re.search(r"\b(eom|end of (the |this )?month|this month|month end)\b", t):
+        return last(base.year, base.month)
+    days = "|".join(sorted(_DAYS, key=len, reverse=True))
+    m = re.search(rf"\b(next )?({days})\b", t)
+    if m:
+        ahead = (_DAYS[m[2]] - base.weekday()) % 7
+        if m[1] and ahead == 0:
+            ahead = 7
+        return base + timedelta(days=ahead)
+    return None
+
+
+def due_info(text, base, today, done=False):
+    """How a task's deadline should be shown: {"date", "state", "label"}.
+
+    state: "overdue" | "today" | "soon" (within 2 days) | "later" | "" (no date could be read).
+    """
+    d = due_date(text, base)
+    if not d:
+        return {"date": None, "state": "", "label": ""}
+    nice = f"{d.day} {d.strftime('%b')}"
+    left = (d - today).days
+    if done:
+        return {"date": d, "state": "later", "label": nice}
+    if left < 0:
+        late = -left
+        return {"date": d, "state": "overdue", "label": f"Overdue by {late} day{'s' if late != 1 else ''} · {nice}"}
+    if left == 0:
+        return {"date": d, "state": "today", "label": "Due today"}
+    if left <= 2:
+        return {"date": d, "state": "soon", "label": ("Due tomorrow" if left == 1 else f"Due in {left} days") + f" · {nice}"}
+    return {"date": d, "state": "later", "label": nice}

@@ -62,6 +62,13 @@ pre{white-space:pre-wrap;font:12px/1.6 'JetBrains Mono',monospace;color:var(--mu
 .danger summary{color:var(--muted);text-decoration:underline;text-underline-offset:3px;display:inline-block}
 .danger[open]{border:1px solid #5A3328;border-radius:14px;padding:18px;background:#261D1A}
 .danger .hint{margin:12px auto;max-width:56ch}
+.fixname{margin:10px 0 4px}
+.fixname summary{cursor:pointer;text-decoration:underline;text-underline-offset:3px;color:var(--muted)}
+.fixname form{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:12px}
+.fixname label{display:grid;gap:4px;font-size:13px;color:var(--muted)}
+.fixname select,.fixname input{min-width:200px}
+.fixname select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;font-size:14px}
+.fixname .hint{margin:10px 0 6px}
 .rename{order:3}
 .rename[open]{flex-basis:100%}
 .rename summary{text-decoration:underline;text-underline-offset:3px}
@@ -135,6 +142,7 @@ p.more{margin:14px 0 0}
     {% if lines %}<a class="btn ghost" href="{{ url_for('transcript_txt', rid=m.id) }}">Download transcript</a>{% endif %}
     {% if lines %}<button type="button" class="btn ghost" data-open-chat>Chat with this meeting</button>{% endif %}
     <a class="btn ghost" href="#share" onclick="document.getElementById('share').open=true">Share with attendees</a>
+    <form method="post" action="{{ url_for('pin', rid=m.id) }}" style="display:inline"><button class="btn ghost">{{ 'Unpin' if m.pinned else 'Pin to top' }}</button></form>
   </div>
   <details class="panel pop" id="share"><summary><h2>Share this report</h2></summary>
     <p class="hint">Emails the report card to the people you choose. They don't need a Meeting Agent account. Emails come from your <a href="{{ url_for('people_page') }}">People</a> list.</p>
@@ -225,6 +233,14 @@ p.more{margin:14px 0 0}
       <input type="text" id="find" placeholder="Search the transcript" aria-label="Search the transcript" autocomplete="off">
       <span class="mono" id="found">{{ lines|length }} lines</span>
     </div>
+    <details class="fixname"><summary class="mono">Wrong name? Fix a speaker's name</summary>
+      <form method="post" action="{{ url_for('fix_speaker', rid=m.id) }}">
+        <label>Shown as <select name="old" id="fixold" required>{% for p in part_rows %}<option>{{ p.name }}</option>{% endfor %}</select></label>
+        <label>Should be <input type="text" name="new" id="fixnew" maxlength="120" required placeholder="Correct name"></label>
+        <button class="btn accent">Fix it</button>
+      </form>
+      <p class="hint">The name changes everywhere in this meeting: transcript, report card, minutes and tasks. Use an existing name to join two speakers into one.</p>
+    </details>
     <div class="lines" id="lines">{% for l in lines %}
       <div class="line"><button class="jump mono" data-sec="{{ l.sec }}">{{ l.time }}</button><span class="spk {{ 'same' if l.same }}">{{ l.speaker }}</span><span class="txt">{{ l.text }}</span></div>
     {% endfor %}</div>
