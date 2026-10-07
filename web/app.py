@@ -903,6 +903,27 @@ def tasks_page():
     return render_template("tasks.html", rows=rows, show=show, counts=counts, due=due, late=late)
 
 
+# ---------- Decisions (every decision from every meeting) ----------
+
+@app.route("/decisions")
+@login_required
+def decisions_page():
+    from .reports import section_bullets
+    q = request.args.get("q", "").strip()[:100]
+    words = q.lower().split()
+    meetings = (Session.query(Meeting).filter(Meeting.user_id == g.user.id, Meeting.status == "done")
+                .order_by(Meeting.created_at.desc()).limit(300).all())
+    groups, total = [], 0
+    for m in meetings:
+        items = section_bullets(m.report_md, "Key decisions")
+        if words:       # every word typed must be in the decision or in the meeting's name
+            items = [d for d in items if all(w in (d + " " + (m.title or "")).lower() for w in words)]
+        if items:
+            groups.append({"m": m, "items": items})
+            total += len(items)
+    return render_template("decisions.html", groups=groups, total=total, q=q)
+
+
 def _own_task(tid):
     t = Session.get(Task, tid)
     if not t or t.user_id != g.user.id:

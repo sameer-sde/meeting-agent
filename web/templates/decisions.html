@@ -1,0 +1,46 @@
+{% extends "shell.html" %}
+{% block title %}Decisions · Meeting Agent{% endblock %}
+{% block css %}
+.wrap{max-width:900px;margin:0 auto;padding:36px 20px 72px}
+.wrap h1{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:40px;margin:0 0 6px}
+.search{display:flex;gap:8px;align-items:center;margin:22px 0 6px}
+.search input{flex:1;min-width:0}
+.link{color:var(--ink);font:600 13px Manrope,sans-serif;text-underline-offset:3px}
+.count{margin:0 0 4px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-top:16px;display:grid;grid-template-columns:62px 1fr;gap:18px}
+.day{text-align:center;line-height:1.05;padding-top:2px}
+.day b{display:block;font-family:Newsreader,Georgia,serif;font-weight:400;font-size:26px;color:var(--accent)}
+.day span{font-size:12px;color:var(--muted)}
+.card h2{font:600 15px Manrope,sans-serif;margin:0}
+.card h2 a{color:var(--ink);text-decoration:none}
+.card h2 a:hover{text-decoration:underline;text-underline-offset:3px}
+.card ul{margin:10px 0 0;padding:0;list-style:none}
+.card li{position:relative;padding:7px 0 7px 18px;line-height:1.5;overflow-wrap:break-word}
+.card li+li{border-top:1px solid var(--line)}
+.card li::before{content:"";position:absolute;left:2px;top:16px;width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.none{color:var(--muted);background:var(--panel);border:1px dashed var(--line);border-radius:16px;padding:18px 20px;margin-top:16px}
+@media(max-width:720px){.card{grid-template-columns:44px 1fr;gap:12px;padding:16px}}
+{% endblock %}
+{% block page %}
+<div class="wrap">
+  <h1>Decisions</h1>
+  <p class="hint">Everything that was decided in your meetings, newest first. When someone asks "when did we agree on this?", search here.</p>
+  <form class="search" method="get" action="{{ url_for('decisions_page') }}" role="search">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search decisions, e.g. budget, launch date" aria-label="Search decisions">
+    <button class="btn ghost">Search</button>
+    {% if q %}<a class="link" href="{{ url_for('decisions_page') }}">Clear</a>{% endif %}
+  </form>
+  {% if groups %}<p class="hint count">{{ total }} decision{{ 's' if total != 1 }} from {{ groups|length }} meeting{{ 's' if groups|length != 1 }}{% if q %} match "{{ q }}"{% endif %}</p>{% endif %}
+  {% for gr in groups %}
+  <section class="card">
+    <span class="day"><b>{{ gr.m.created_at|local('%d') }}</b><span>{{ gr.m.created_at|local('%b %Y') }}</span></span>
+    <div>
+      <h2><a href="{{ url_for('report', rid=gr.m.id) }}#card">{{ gr.m.title }}</a></h2>
+      <ul>{% for d in gr['items'] %}<li>{{ d }}</li>{% endfor %}</ul>
+    </div>
+  </section>
+  {% else %}
+  <p class="none">{% if q %}No decision matches "{{ q }}".{% else %}No decisions yet. They appear here after your next meeting.{% endif %}</p>
+  {% endfor %}
+</div>
+{% endblock %}
