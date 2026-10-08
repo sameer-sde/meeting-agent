@@ -1069,6 +1069,22 @@ def _mom_markdown(m):
     return head + "## Action items\n\n" + "\n".join(table) + "\n" + (rest[nxt.start():] if nxt else "")
 
 
+@app.route("/report/<int:rid>/mom.docx")
+@login_required
+def mom_docx(rid):
+    from . import word
+    m = _own_meeting(rid)
+    if not m.mom_md:
+        return redirect(url_for("mom", rid=rid))
+    _, people, _, _ = tasks.meeting_people(Session(), g.user, m)
+    t = tasks.meeting_times(m)
+    facts = [("Date", local_time(m.created_at, "%d %B %Y")), ("Platform", platform_name(m.platform) or "Not recorded")]
+    facts += [(k, t[v]) for k, v in (("Started", "start"), ("Ended", "end"), ("Duration", "duration")) if t[v]]
+    data = word.make_docx(m.title, facts, people, _mom_markdown(m))
+    return Response(data, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": f'attachment; filename="MOM-{_safe_name(m)}.docx"'})
+
+
 @app.post("/report/<int:rid>/mom/generate")
 @login_required
 def mom_generate(rid):
