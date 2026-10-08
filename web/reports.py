@@ -195,31 +195,38 @@ def make_report(lines):
     return _llm(PROMPT + "\n".join(lines))
 
 
-MOM_PROMPT = """You are writing formal Minutes of Meeting (MOM) from a meeting transcript.
+MOM_PROMPT = """You are writing the Minutes of Meeting (MOM) from a meeting transcript.
 Speakers may use English, Hindi, Telugu or a mix, and some lines may be mis-transcribed.
 Understand the meaning and write everything in clear, professional English.
 
 Meeting title: {title}
 Date: {date}
-Attendees (already listed separately, do not repeat as a section): {attendees}
+Attendees (already listed separately, do not repeat them as a section): {attendees}
 
-Write the MOM in markdown with exactly these sections:
-## Purpose of the meeting
-One or two sentences.
-## Agenda covered
-A numbered list of the topics discussed, in the order they came up.
-## Discussion
-For each agenda item, a ### heading with the topic and 2-5 bullet points of what was said,
-naming who raised each point.
-## Decisions
-A numbered list. If none, write "No decisions were recorded."
+Write in markdown, in exactly this shape and nothing else:
+
+## Meeting notes
+- **<Topic title>:** <one or two sentences: who discussed it (their names) and what was explained or agreed>
+    - **<Sub-point title>:** <one or two sentences with the detail, naming who said what>
+    - **<Sub-point title>:** <...>
+- **<Next topic title>:** <...>
+    - **<Sub-point title>:** <...>
+
+## Follow-up tasks
+- **<Short task title>:** <what has to be done, as one clear sentence>. (<owner name, or several names separated by commas>)
+
 ## Action items
-A markdown table with columns: No. | Action | Owner | Due date
-Use "Not set" when no owner or date was mentioned.
-## Next steps
-Bullet points, including any next meeting mentioned.
+| SN | Action Item | Action By | Target Date | Status |
+|---|---|---|---|---|
+| 1 | <short action> | <owner> | <deadline as it was said> | Open |
 
-Only include what was actually said. Do not invent names, numbers, dates or decisions.
+Rules:
+- Topics follow the order of the meeting. Use 2 topics for a short meeting and up to 8 for a long one.
+- Every topic has 2 to 5 sub-points, indented with exactly 4 spaces.
+- Topic and sub-point titles are short (2 to 6 words) and in Title Case.
+- Follow-up tasks and Action items list the same tasks. Write "Not set" when no owner or date was said.
+  If there were no tasks, write "No follow-up tasks were recorded." under Follow-up tasks and leave out the table.
+- Only include what was actually said. Do not invent names, numbers, dates or decisions.
 
 TRANSCRIPT:
 """

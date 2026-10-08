@@ -1039,8 +1039,34 @@ def audio(rid):
 def mom(rid):
     m = _own_meeting(rid)
     _, people, part_rows, _ = tasks.meeting_people(Session(), g.user, m)
-    html = markdown.markdown(m.mom_md or "", extensions=["tables", "sane_lists"])
+    html = markdown.markdown(_mom_markdown(m), extensions=["tables", "sane_lists"])
     return render_template("mom.html", m=m, mom_html=html, people=people, prepared_for=g.user)
+
+
+def _mom_markdown(m):
+    """The MOM text, tidied for display. When the meeting's tasks are known, the action table is
+    built from them, so its Status column follows what was ticked on the Tasks page."""
+    import re
+    from . import analytics
+    text = m.mom_md or ""
+    # sub-points indented with 2 or 3 spaces would show as top-level points
+    text = re.sub(r"(?m)^ {1,3}([-*] )", r"    \1", text)
+    rows = Session.query(Task).filter_by(meeting_id=m.id).order_by(Task.id).all()
+    if not rows or "## Action items" not in text:
+        return text
+    said_on = m.started_at or m.created_at
+    if said_on and said_on.tzinfo is None:
+        said_on = said_on.replace(tzinfo=timezone.utc)
+    base = said_on.astimezone(TZ).date() if said_on else datetime.now(TZ).date()
+    cell = lambda v: " ".join(str(v or "").split()).replace("|", "/")
+    table = ["| SN | Action Item | Action By | Target Date | Status |", "|---|---|---|---|---|"]
+    for n, t in enumerate(rows, 1):
+        day = analytics.due_date(t.due, base)
+        when = day.strftime("%d %b %Y").lstrip("0") if day else (t.due or "Not set")
+        table.append(f"| {n} | {cell(t.text)} | {cell(t.owner) or 'Not set'} | {cell(when)} | {'Done' if t.done else 'Open'} |")
+    head, _, rest = text.partition("## Action items")
+    nxt = re.search(r"(?m)^## ", rest)
+    return head + "## Action items\n\n" + "\n".join(table) + "\n" + (rest[nxt.start():] if nxt else "")
 
 
 @app.post("/report/<int:rid>/mom/generate")
