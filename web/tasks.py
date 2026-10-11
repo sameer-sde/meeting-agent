@@ -426,6 +426,11 @@ def write_report(db, user, row, m=None):
             vexa.participants(user.tx_key, row.platform, row.native_id), ensure_ascii=False)
         row.duration_min = None                       # worked out again from this transcript
         fill_times(row, *(vexa.times_of(m) if m else (None, None)))
+        typed = meeting_chat(db, user, row)
+        if typed:                                     # what people typed counts too (links, decisions)
+            row.chat_json = json.dumps(typed, ensure_ascii=False)
+            if lines:
+                lines = lines + ["", "MESSAGES TYPED IN THE MEETING CHAT:"] + [f"{c['sender']} (chat): {c['text']}" for c in typed]
         if not lines:
             row.status = "empty"
             db.commit()
@@ -583,6 +588,69 @@ def greet_meetings(db, user):
     return sent
 
 
+# ---------- the meeting's own chat ----------
+
+def save_meeting_chat(db, user):
+    """While the bot is in a meeting, keep a copy of what people type in its chat. Returns new lines."""
+    import hashlib
+    from .models import MeetingChatLine
+    added = 0
+    for b in vexa.running(user.bot_key):
+        if (b.get("status") or "").lower() != "active":
+            continue
+        platform, native = b.get("platform"), b.get("native_meeting_id")
+        if not platform or not native:
+            continue
+        mine = (user.agent_name or "").strip().lower()
+        for msg in vexa.read_chat(user.bot_key, platform, native):
+            if mine and msg["sender"].strip().lower() == mine:
+                continue                      # the bot's own hello
+            key = hashlib.sha256(f"{platform}:{native}:{msg['sender']}:{msg['time']}:{msg['text']}".encode()).hexdigest()[:64]
+            if db.query(MeetingChatLine).filter_by(user_id=user.id, key=key).first():
+                continue
+            when = _chat_time(msg["time"])
+            db.add(MeetingChatLine(user_id=user.id, platform=platform, native_id=str(native), key=key,
+                                   sender=msg["sender"], text=msg["text"], sent_at=when or datetime.now(timezone.utc)))
+            added += 1
+        db.commit()
+    return added
+
+
+def _chat_time(v):
+    """A chat message's time: ISO text or epoch seconds/milliseconds. None when it can't be read."""
+    if v in (None, ""):
+        return None
+    try:
+        n = float(v)
+        return datetime.fromtimestamp(n / 1000 if n > 1e11 else n, tz=timezone.utc)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return vexa._when(v)
+
+
+CHAT_WINDOW_MINUTES = 30
+
+
+def meeting_chat(db, user, row):
+    """The chat lines saved for this meeting: same link, typed while it was on. [{"time", "sender", "text"}]"""
+    from .models import MeetingChatLine
+    if not row.platform or not row.native_id:
+        return []
+    start = row.started_at or row.created_at
+    end = row.ended_at or datetime.now(timezone.utc)
+    fix = lambda d: d if d is None or d.tzinfo else d.replace(tzinfo=timezone.utc)
+    start, end = fix(start), fix(end)
+    pad = timedelta(minutes=CHAT_WINDOW_MINUTES)
+    out = []
+    for c in (db.query(MeetingChatLine).filter_by(user_id=user.id, platform=row.platform, native_id=str(row.native_id))
+              .order_by(MeetingChatLine.sent_at, MeetingChatLine.id)):
+        at = fix(c.sent_at or c.created_at)
+        if start and not (start - pad <= at <= end + pad):
+            continue                          # the same link used for another meeting (a recurring one)
+        out.append({"time": at.astimezone(_user_tz()).strftime("%I:%M %p").lstrip("0"),
+                    "sender": c.sender or "Someone", "text": c.text})
+    return out
+
+
 # ---------- reminders for late tasks ----------
 
 REMIND_EVERY_HOURS = 20
@@ -724,7 +792,7 @@ def tick():
     """One pass over every user. Safe to call often; overlapping calls are skipped."""
     if not _lock.acquire(blocking=False):
         return {"skipped": True}
-    stats = {"users": 0, "reports": 0, "asked": 0, "greeted": 0, "briefs": 0, "weekly": 0, "telegram": 0, "errors": 0}
+    stats = {"users": 0, "reports": 0, "asked": 0, "greeted": 0, "briefs": 0, "weekly": 0, "chat": 0, "telegram": 0, "errors": 0}
     db = Session()
     try:
         stats["telegram"] = handle_telegram(db)
@@ -736,6 +804,11 @@ def tick():
             try:
                 stats["greeted"] += greet_meetings(db, user)
                 db.commit()
+            except Exception:
+                db.rollback()
+                traceback.print_exc()
+            try:
+                stats["chat"] += save_meeting_chat(db, user)
             except Exception:
                 db.rollback()
                 traceback.print_exc()

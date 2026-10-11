@@ -66,6 +66,12 @@ pre{white-space:pre-wrap;font:12px/1.6 'JetBrains Mono',monospace;color:var(--mu
 #followup textarea{background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--ink);font:14px/1.55 Manrope,sans-serif;padding:12px 14px;resize:vertical}
 .fuacts{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:center}
 .fuacts form{margin:0}
+h3.sub{font:600 14px Manrope,sans-serif;margin:18px 0 8px;color:var(--ink)}
+.links{margin:0 0 6px;padding-left:20px}
+.links li{margin:4px 0;overflow-wrap:anywhere}
+.links a{color:var(--accent)}
+.linkbox{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+.linkbox input{flex:1;min-width:0}
 .fixname{margin:10px 0 4px}
 .fixname summary{cursor:pointer;text-decoration:underline;text-underline-offset:3px;color:var(--muted)}
 .fixname form{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:12px}
@@ -149,7 +155,7 @@ p.more{margin:14px 0 0}
     {% if m.status == 'done' and m.report_md %}<a class="btn ghost" href="#followup" onclick="document.getElementById('followup').open=true">Follow-up email</a>{% endif %}
     <form method="post" action="{{ url_for('pin', rid=m.id) }}" style="display:inline"><button class="btn ghost">{{ 'Unpin' if m.pinned else 'Pin to top' }}</button></form>
   </div>
-  <details class="panel pop" id="share"><summary><h2>Share this report</h2></summary>
+  <details class="panel pop" id="share" {{ 'open' if share_url }}><summary><h2>Share this report</h2></summary>
     <p class="hint">Emails the report card to the people you choose. They don't need a Meeting Agent account. Emails come from your <a href="{{ url_for('people_page') }}">People</a> list.</p>
     <form method="post" action="{{ url_for('share', rid=m.id) }}">
       {% if share_to %}<div class="picks">{% for p in share_to %}
@@ -159,6 +165,20 @@ p.more{margin:14px 0 0}
       <label class="f" for="extra">Other email addresses (separate with commas)</label>
       <div class="tools"><input type="text" id="extra" name="extra" placeholder="name@company.com, another@company.com"><button class="btn accent">Send report</button></div>
     </form>
+    <div class="linkbox">
+      <h3 class="sub">Or share a link</h3>
+      <p class="hint">A private, read-only page with the report card, action items and minutes. No account needed. Transcript and recording are not included. Anyone who has the link can open it, so share it with care.</p>
+      {% if share_url %}
+      <div class="tools"><input type="text" id="shareurl" value="{{ share_url }}" readonly aria-label="Share link"><button type="button" class="btn accent" id="copyshare">Copy link</button></div>
+      <p class="hint">Works until {{ m.share_until|local('%d %b %Y') }}.</p>
+      <div class="fuacts">
+        {% for d in (7, 30) %}<form method="post" action="{{ url_for('share_link', rid=m.id) }}"><input type="hidden" name="days" value="{{ d }}"><button class="btn ghost">New link for {{ d }} days</button></form>{% endfor %}
+        <form method="post" action="{{ url_for('share_link', rid=m.id) }}"><input type="hidden" name="days" value="0"><button class="btn stop">Turn off link</button></form>
+      </div>
+      {% else %}
+      <div class="fuacts">{% for d in (7, 30) %}<form method="post" action="{{ url_for('share_link', rid=m.id) }}"><input type="hidden" name="days" value="{{ d }}"><button class="btn {{ 'accent' if d == 7 else 'ghost' }}">Make a link for {{ d }} days</button></form>{% endfor %}</div>
+      {% endif %}
+    </div>
   </details>
   <details class="panel pop" id="followup" {{ 'open' if fu_body }}><summary><h2>Follow-up email</h2></summary>
     {% if fu_body %}
@@ -182,7 +202,7 @@ p.more{margin:14px 0 0}
     <audio id="player" controls preload="none"></audio>
   </section>
   <nav class="tabs" aria-label="Report sections">
-    <a href="#card">Report card</a>{% if followups %}<a href="#promises">Promises</a>{% endif %}{% if score %}<a href="#score">Score</a>{% endif %}<a href="#chapters">Chapters</a><a href="#transcript">Transcript</a><a href="#speakers">Speakers</a><a href="#participation">Participation</a><a href="#mentions">Mentions</a><a href="#attendance">Attendance</a>
+    <a href="#card">Report card</a>{% if followups %}<a href="#promises">Promises</a>{% endif %}{% if score %}<a href="#score">Score</a>{% endif %}<a href="#chapters">Chapters</a><a href="#transcript">Transcript</a><a href="#speakers">Speakers</a><a href="#participation">Participation</a>{% if typed %}<a href="#mchat">Chat</a>{% endif %}<a href="#mentions">Mentions</a><a href="#attendance">Attendance</a>
   </nav>
 
   {% if m.status == 'error' %}
@@ -295,6 +315,21 @@ p.more{margin:14px 0 0}
     </tbody></table>
     {% else %}<p class="empty">No speech was recorded for this meeting.</p>{% endif %}
   </section>
+
+  {% if typed %}
+  <section class="panel" id="mchat">
+    <h2>Meeting chat</h2>
+    <p class="hint">What people typed in the meeting's chat while the bot was there. The report and minutes take these into account.</p>
+    {% if typed_links %}
+    <h3 class="sub">Links shared</h3>
+    <ul class="links">{% for l in typed_links %}<li><a href="{{ l.url }}" target="_blank" rel="noopener noreferrer">{{ l.url|truncate(80, True, '…') }}</a> <span class="hint">{{ l.sender }}{% if l.time %} · {{ l.time }}{% endif %}</span></li>{% endfor %}</ul>
+    {% endif %}
+    <h3 class="sub">Messages ({{ typed|length }})</h3>
+    <div class="lines">{% for c in typed %}
+      <div class="line"><span class="mono">{{ c.time }}</span><span class="spk">{{ c.sender }}</span><span class="txt">{{ c.text }}</span></div>
+    {% endfor %}</div>
+  </section>
+  {% endif %}
 
   <section class="panel" id="mentions">
     <h2>Mentions</h2>
@@ -416,6 +451,15 @@ p.more{margin:14px 0 0}
   mail.addEventListener('click',function(e){
     e.preventDefault();
     location.href='mailto:'+encodeURIComponent(mail.dataset.to).replace(/%2C/g,',')+'?subject='+encodeURIComponent(sub.value)+'&body='+encodeURIComponent(body.value);
+  });
+})();
+
+(function(){
+  var b=document.getElementById('copyshare');if(!b)return;
+  var f=document.getElementById('shareurl');
+  b.addEventListener('click',function(){
+    (navigator.clipboard?navigator.clipboard.writeText(f.value):Promise.reject()).catch(function(){f.select();document.execCommand('copy');})
+      .then(function(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy link'},2500);});
   });
 })();
 </script>

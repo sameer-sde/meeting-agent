@@ -169,6 +169,9 @@ class Meeting(Base):
     agenda: Mapped[str | None] = mapped_column(Text, nullable=True)            # one point per line
     kind: Mapped[str | None] = mapped_column(String(20), nullable=True)        # standard | status | interview
     followup_email: Mapped[str | None] = mapped_column(Text, nullable=True)    # draft written on request
+    chat_json: Mapped[str | None] = mapped_column(Text, nullable=True)         # messages typed in the meeting chat
+    share_token: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)  # private read-only link
+    share_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     tries: Mapped[int | None] = mapped_column(Integer, nullable=True)        # attempts at writing the report
     writing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # last attempt began
     followups_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # promise tracker; None = not looked for
@@ -207,6 +210,21 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String(8), default="user")  # user | bot
     text: Mapped[str] = mapped_column(Text, default="")
     extra_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # proof lines and any action (bot only)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class MeetingChatLine(Base):
+    """One message typed in a meeting's own chat, saved while the bot was in the meeting."""
+    __tablename__ = "meeting_chat_lines"
+    __table_args__ = (UniqueConstraint("user_id", "key", name="uq_meeting_chat_line"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    platform: Mapped[str] = mapped_column(String(40), default="")
+    native_id: Mapped[str] = mapped_column(String(255), default="")
+    key: Mapped[str] = mapped_column(String(64))                  # sender + time + text, hashed
+    sender: Mapped[str] = mapped_column(String(255), default="")
+    text: Mapped[str] = mapped_column(Text, default="")
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

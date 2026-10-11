@@ -566,8 +566,10 @@ def report(rid):
     copies = {"summary": plain(m.report_md, "Summary"), "actions": plain(m.report_md, "Action items"),
               "all": f"{m.title}\n" + plain(m.report_md)}
     fu_subject, fu_body = _split_subject(m.followup_email)
+    typed = _typed_chat(m)
     return render_template("report.html", m=m, report_html=html, part_rows=part_rows, copies=copies,
                            fu_subject=fu_subject, fu_body=fu_body,
+                           typed=typed, typed_links=_links_in(typed), share_url=_share_url(m),
                            fu_to=",".join(p["email"] for p in share_to if p["status"].startswith("Attended")),
                            mentions=ments, people=people, chapters=chapters, share_to=share_to,
                            followups=followups, score=score,
@@ -578,6 +580,41 @@ def report(rid):
                            open_tasks=Session.query(Task).filter_by(meeting_id=m.id, done=False).count(),
                            lines=analytics.transcript_rows(segs, TZ, JUNK),
                            timeline=analytics.timeline(segs, TZ))
+
+
+def _typed_chat(m):
+    import json
+    try:
+        rows = json.loads(m.chat_json or "[]")
+        return [r for r in rows if isinstance(r, dict) and r.get("text")]
+    except ValueError:
+        return []
+
+
+def _links_in(typed):
+    """Every web link typed in the meeting chat, once each, with who shared it."""
+    out, seen = [], set()
+    for r in typed:
+        for url in re.findall(r"https?://[^\s<>\"')\]]+", r["text"]):
+            url = url.rstrip(".,;:!?")
+            if url not in seen:
+                seen.add(url)
+                out.append({"url": url, "sender": r.get("sender", ""), "time": r.get("time", "")})
+    return out
+
+
+def _share_url(m):
+    """The private read-only link of a report, or None when it is off or has expired."""
+    if not m.share_token:
+        return None
+    until = m.share_until
+    if until is not None and until.tzinfo is None:
+        until = until.replace(tzinfo=timezone.utc)
+    if until and until < datetime.now(timezone.utc):
+        return None
+    base = os.environ.get("PUBLIC_URL", "").rstrip("/")
+    path = url_for("shared_report", token=m.share_token)
+    return base + path if base else url_for("shared_report", token=m.share_token, _external=True)
 
 
 def _split_subject(text):
@@ -623,6 +660,8 @@ def delete_meeting(rid):
     m.chapters_json = m.followups_json = m.recording_json = None
     m.started_at = m.ended_at = None
     m.pinned, m.speaker_map_json = False, None
+    m.share_token = m.share_until = None
+    m.chat_json = m.followup_email = None
     Session.commit()
     flash(f"“{title}” was deleted.")
     return redirect(url_for("index"))
@@ -694,6 +733,48 @@ def followup_email(rid):
     except Exception as e:
         flash(f"Couldn't write the email: {e}")
     return redirect(back)
+
+
+SHARE_DAYS = (7, 30)
+
+
+@app.post("/report/<int:rid>/link")
+@login_required
+def share_link(rid):
+    """Make, renew or turn off the private read-only link of a report."""
+    import secrets
+    from datetime import timedelta
+    m = _own_meeting(rid)
+    try:
+        days = int(request.form.get("days", "0"))
+    except ValueError:
+        days = 0
+    if days in SHARE_DAYS and m.status == "done":
+        m.share_token = secrets.token_urlsafe(24)            # a new link each time; old ones stop working
+        m.share_until = datetime.now(timezone.utc) + timedelta(days=days)
+        flash(f"Link ready. It works for {days} days. Anyone with the link can read this report.")
+    else:
+        m.share_token = m.share_until = None
+        flash("The link is turned off. Anyone who had it can't open the report any more.")
+    Session.commit()
+    return redirect(url_for("report", rid=rid) + "#share")
+
+
+@app.route("/r/<token>")
+def shared_report(token):
+    """A report opened from its private link: read-only, no account needed."""
+    m = Session.query(Meeting).filter_by(share_token=token).first() if len(token) >= 20 else None
+    if not m or m.status != "done" or not _share_url(m):
+        return render_template("shared.html", m=None), 404
+    owner = Session.get(User, m.user_id)
+    html = markdown.markdown(m.report_md or "", extensions=["nl2br", "sane_lists"])
+    mom_html = markdown.markdown(_mom_markdown(m), extensions=["tables", "sane_lists"]) if m.mom_md else ""
+    resp = Response(render_template("shared.html", m=m, report_html=html, mom_html=mom_html,
+                                    owner=(owner.name or owner.first_name) if owner else "",
+                                    t=tasks.meeting_times(m)))
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    return resp
 
 
 @app.post("/report/<int:rid>/retry")

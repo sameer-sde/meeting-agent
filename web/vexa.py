@@ -56,6 +56,38 @@ def chat(bot_key, platform, native_id, text):
         return False
 
 
+def read_chat(bot_key, platform, native_id):
+    """Messages typed in the meeting chat so far (only while the bot is in the meeting).
+
+    Vexa doesn't document the shape of this reply, so several common field names are accepted.
+    Returns [{"sender", "text", "time"}]; [] when nothing could be read.
+    """
+    try:
+        r = requests.get(f"{BASE}/bots/{platform}/{native_id}/chat", headers=_h(bot_key), timeout=TIMEOUT)
+        if not r.ok:
+            return []
+        data = r.json()
+    except (requests.RequestException, ValueError):
+        return []
+    rows = data if isinstance(data, list) else (_rows(data, "messages", "chat", "items", "data")
+                                                if isinstance(data, dict) else [])
+    out = []
+    for x in rows:
+        if isinstance(x, str):
+            x = {"text": x}
+        if not isinstance(x, dict):
+            continue
+        text = next((x[k] for k in ("text", "message", "content", "body") if isinstance(x.get(k), str)), "")
+        who = next((x[k] for k in ("sender", "sender_name", "author", "from", "name", "participant", "user")
+                    if x.get(k)), "")
+        if isinstance(who, dict):
+            who = who.get("name") or who.get("display_name") or ""
+        when = next((x[k] for k in ("timestamp", "time", "sent_at", "created_at", "ts") if x.get(k)), None)
+        if text.strip():
+            out.append({"sender": str(who).strip()[:255], "text": text.strip()[:4000], "time": when})
+    return out
+
+
 def running(bot_key):
     r = requests.get(f"{BASE}/bots/status", headers=_h(bot_key), timeout=TIMEOUT)
     if not r.ok:
