@@ -458,10 +458,23 @@ def schedule():
         local = datetime.strptime(request.form["when"], "%Y-%m-%dT%H:%M").replace(tzinfo=TZ)
         vexa.schedule(g.user.tx_key, request.form.get("title", "").strip(), request.form["link"].strip(),
                       local.astimezone(timezone.utc), g.user.agent_name)
-        flash("Scheduled. The bot joins about a minute before the start.")
+        agenda = _clean_agenda(request.form.get("agenda", ""))
+        if agenda:                      # kept until the meeting happens, then checked in the minutes
+            from .models import Agenda
+            Session.add(Agenda(user_id=g.user.id, link=request.form["link"].strip()[:2000],
+                               starts_at=local.astimezone(timezone.utc), text=agenda))
+            Session.commit()
+        flash("Scheduled. The bot joins about a minute before the start."
+              + (" After the meeting, the minutes will show which agenda points were covered." if agenda else ""))
     except Exception as e:
         flash(f"Couldn't schedule the meeting: {e}")
     return redirect(url_for("index"))
+
+
+def _clean_agenda(text):
+    """One point per line, without bullets or empty lines; at most 15 points."""
+    points = [" ".join(p.strip(" -*•\t").split())[:200] for p in (text or "").splitlines()]
+    return "\n".join([p for p in points if p][:15])
 
 
 @app.post("/calendar/connect")
@@ -900,7 +913,86 @@ def tasks_page():
     rows.sort(key=lambda t: (t.done, order[due[t.id]["state"]] if not t.done else 0,
                              (due[t.id]["date"] or far) if not t.done else far))
     late = sum(1 for t in rows if not t.done and due[t.id]["state"] == "overdue")
-    return render_template("tasks.html", rows=rows, show=show, counts=counts, due=due, late=late)
+    book = _email_book()
+    emails = {t.id: _owner_email(t.owner, book) for t in rows if not t.done and due[t.id]["state"] == "overdue"}
+    return render_template("tasks.html", rows=rows, show=show, counts=counts, due=due, late=late,
+                           emails=emails, reminded=_reminded_recently)
+
+
+def _email_book():
+    """Names on the People page mapped to their email, by full name and by first name."""
+    from .models import Person
+    book, firsts = {}, {}
+    for p in Session.query(Person).filter_by(user_id=g.user.id):
+        if not (p.email or "").strip():
+            continue
+        name = " ".join((p.name or "").lower().split())
+        book.setdefault(name, p.email.strip())
+        first = name.split(" ")[0] if name else ""
+        firsts.setdefault(first, set()).add(p.email.strip())
+    for first, found in firsts.items():     # a first name only counts when one person has it
+        if first and len(found) == 1:
+            book.setdefault(first, next(iter(found)))
+    return book
+
+
+def _owner_email(owner, book):
+    """The email of a task's owner, or "" when it can't be told for sure. Tasks with several owners
+    ("Sarah, James") are not matched."""
+    name = " ".join((owner or "").lower().split())
+    if not name or "," in name or " and " in name or "&" in name:
+        return ""
+    return book.get(name) or book.get(name.split(" ")[0], "")
+
+
+REMIND_EVERY_HOURS = 20
+
+
+def _reminded_recently(t):
+    if not t.reminded_at:
+        return False
+    at = t.reminded_at if t.reminded_at.tzinfo else t.reminded_at.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - at).total_seconds() < REMIND_EVERY_HOURS * 3600
+
+
+@app.post("/tasks/<int:tid>/remind")
+@login_required
+def task_remind(tid):
+    """Email the owner of a late task a short reminder (at most once a day per task)."""
+    from . import analytics, mailer
+    t = _own_task(tid)
+    back = redirect(url_for("tasks_page", show=request.form.get("show", "open")))
+    email = _owner_email(t.owner, _email_book())
+    if t.done or not email:
+        flash("Add this person's email on the People page first, then you can remind them.")
+        return back
+    if _reminded_recently(t):
+        flash(f"{t.owner} was already reminded today.")
+        return back
+    m = t.meeting
+    said_on = (m.started_at or m.created_at) if m else t.created_at
+    if said_on and said_on.tzinfo is None:
+        said_on = said_on.replace(tzinfo=timezone.utc)
+    today = datetime.now(TZ).date()
+    info = analytics.due_info(t.due, said_on.astimezone(TZ).date() if said_on else today, today)
+    meeting = f"{m.title} ({local_time(m.created_at, '%d %b')})" if m else "a meeting"
+    sender = g.user.name or g.user.first_name
+    body = (f"## Task\n- **What:** {t.text}\n- **Due:** {info['label'] or t.due or 'Not set'}\n"
+            f"- **From the meeting:** {meeting}\n\nPlease reply to {sender} with an update.")
+    try:
+        sent = mailer.send_report([email], f"Reminder: {t.text[:70]}", body, None, None,
+                                  hello=f"Hi {(t.owner or '').split(' ')[0]},",
+                                  intro=f"{sender} is sending a friendly reminder about a task from {meeting} that is now past its due date.")
+    except Exception as e:
+        flash(f"Couldn't send the reminder: {e}")
+        return back
+    if not sent:
+        flash("Email isn't set up on this site, so the reminder couldn't be sent.")
+        return back
+    t.reminded_at = datetime.now(timezone.utc)
+    Session.commit()
+    flash(f"Reminder sent to {t.owner} ({email}).")
+    return back
 
 
 # ---------- Decisions (every decision from every meeting) ----------
@@ -1040,6 +1132,9 @@ def mom(rid):
     m = _own_meeting(rid)
     _, people, part_rows, _ = tasks.meeting_people(Session(), g.user, m)
     html = markdown.markdown(_mom_markdown(m), extensions=["tables", "sane_lists"])
+    import re
+    html = re.sub(r"(</strong>\s*)(Not covered|Partly covered|Covered)\b",
+                  lambda x: x[1] + f'<span class="ag {x[2].split()[0].lower()}">{x[2]}</span>', html)
     return render_template("mom.html", m=m, mom_html=html, people=people, prepared_for=g.user)
 
 
@@ -1067,6 +1162,25 @@ def _mom_markdown(m):
     head, _, rest = text.partition("## Action items")
     nxt = re.search(r"(?m)^## ", rest)
     return head + "## Action items\n\n" + "\n".join(table) + "\n" + (rest[nxt.start():] if nxt else "")
+
+
+@app.post("/report/<int:rid>/agenda")
+@login_required
+def mom_agenda(rid):
+    """Add or change a meeting's agenda after the fact, and write the minutes again with it."""
+    m = _own_meeting(rid)
+    m.agenda = _clean_agenda(request.form.get("agenda", ""))
+    Session.commit()
+    if request.form.get("rewrite"):
+        try:
+            m.mom_md = tasks.build_mom(Session(), g.user, m)
+            Session.commit()
+            flash("Agenda saved and the minutes were written again with the agenda check.")
+        except Exception as e:
+            flash(f"Agenda saved, but the minutes couldn't be written again: {e}")
+    else:
+        flash("Agenda saved. Press Rewrite MOM to add the agenda check.")
+    return redirect(url_for("mom", rid=rid))
 
 
 @app.route("/report/<int:rid>/mom.docx")
@@ -1204,6 +1318,7 @@ def settings():
             u.greet_text = request.form.get("greet_text", "").strip()[:500] or None
             u.brief_on = bool(request.form.get("brief_on"))
             u.always_join = bool(request.form.get("always_join"))
+            u.weekly_on = bool(request.form.get("weekly_on"))
         try:
             if "ask_minutes" in request.form:
                 u.ask_minutes = max(2, min(30, int(request.form["ask_minutes"])))

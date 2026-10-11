@@ -78,6 +78,8 @@ class User(Base):
     greet_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     brief_on: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=True)
     always_join: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
+    weekly_on: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=True)   # Monday summary email
+    weekly_sent: Mapped[str | None] = mapped_column(String(10), nullable=True)            # date it was last sent
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
     meetings = relationship("Meeting", back_populates="user", cascade="all, delete-orphan")
@@ -126,6 +128,10 @@ class User(Base):
                 f"I only listen, and I'll send a summary after the meeting.")
 
     @property
+    def weekly(self):
+        return self.weekly_on is not False
+
+    @property
     def briefs(self):
         return self.brief_on is not False
 
@@ -159,6 +165,7 @@ class Meeting(Base):
     duration_min: Mapped[int | None] = mapped_column(Integer, nullable=True)  # None = not worked out yet
     pinned: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)   # kept at the top of the dashboard
     speaker_map_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # {"name as heard": "corrected name"}
+    agenda: Mapped[str | None] = mapped_column(Text, nullable=True)            # one point per line
     tries: Mapped[int | None] = mapped_column(Integer, nullable=True)        # attempts at writing the report
     writing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # last attempt began
     followups_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # promise tracker; None = not looked for
@@ -182,6 +189,7 @@ class Task(Base):
     due: Mapped[str] = mapped_column(String(120), default="")
     done: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    reminded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     meeting = relationship("Meeting", back_populates="tasks")
 
@@ -196,6 +204,18 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String(8), default="user")  # user | bot
     text: Mapped[str] = mapped_column(Text, default="")
     extra_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # proof lines and any action (bot only)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Agenda(Base):
+    """An agenda typed when scheduling a meeting, waiting for that meeting to happen."""
+    __tablename__ = "agendas"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    link: Mapped[str] = mapped_column(Text, default="")
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    text: Mapped[str] = mapped_column(Text, default="")
+    used: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

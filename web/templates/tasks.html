@@ -21,6 +21,11 @@
 .due.overdue{color:#F2A08C;border-color:#6B3A2E;background:#2E1F1B}
 .due.today,.due.soon{color:var(--gold);border-color:#5A4A2A;background:#2B261C}
 .latenote{margin:16px 0 0;padding:10px 14px;border-radius:10px;border:1px solid #6B3A2E;background:#2E1F1B;color:#F2A08C;font-weight:600}
+.side{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.remind{font:600 13px Manrope,sans-serif;border:1px solid #6B3A2E;background:#2E1F1B;color:#F2A08C;border-radius:8px;padding:5px 12px;cursor:pointer}
+.remind:hover{border-color:#F2A08C}
+.sent{font-size:12px;color:var(--live);white-space:nowrap}
+.noemail{font-size:12px;color:var(--muted);white-space:nowrap}
 .none{color:var(--muted);padding:18px 0;margin:0}
 {% endblock %}
 {% block page %}
@@ -48,7 +53,12 @@
           <a href="{{ url_for('report', rid=t.meeting_id) }}">{{ t.meeting.title }} · {{ t.meeting.created_at|local('%d %b') }}</a>
         </div>
       </div>
-      <form method="post" action="{{ url_for('task_delete', tid=t.id) }}"><input type="hidden" name="show" value="{{ show }}"><button class="link">Remove</button></form>
+      <div class="side">
+        {% if t.id in emails %}{% if reminded(t) %}<span class="sent">Reminded today</span>
+        {% elif emails[t.id] %}<form method="post" action="{{ url_for('task_remind', tid=t.id) }}"><input type="hidden" name="show" value="{{ show }}"><button class="remind" title="Email {{ emails[t.id] }}">Remind</button></form>
+        {% else %}<a class="noemail" href="{{ url_for('people_page') }}" title="Add {{ t.owner or 'the owner' }}'s email on the People page to send reminders">No email</a>{% endif %}{% endif %}
+        <form method="post" action="{{ url_for('task_delete', tid=t.id) }}"><input type="hidden" name="show" value="{{ show }}"><button class="link">Remove</button></form>
+      </div>
     </div>
     {% else %}
     <p class="none">{% if show == 'done' %}Nothing ticked off yet.{% elif show == 'open' and counts.done %}All done. Nothing is open.{% else %}No tasks yet. They appear here after your next meeting.{% endif %}</p>

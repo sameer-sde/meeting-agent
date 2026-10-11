@@ -154,7 +154,47 @@ def build_mom(db, user, meeting, lines=None):
     attendees = [f"{p['name']} ({p['designation']})" if p["designation"] else p["name"]
                  for p in people if p["status"].startswith("Attended")]
     when = (meeting.created_at or datetime.now(timezone.utc)).astimezone(_user_tz()).strftime("%d %B %Y")
-    return reports.make_mom(lines, meeting.title, when, attendees)
+    if meeting.agenda is None:
+        meeting.agenda = find_agenda(db, user, meeting)
+    return reports.make_mom(lines, meeting.title, when, attendees, meeting.agenda)
+
+
+AGENDA_MATCH_MINUTES = 45
+
+
+def find_agenda(db, user, meeting):
+    """The agenda typed when this meeting was scheduled, or "" when there was none.
+
+    A scheduled meeting and the finished one are matched by the meeting code in the link, or else
+    by a start time close to the scheduled time."""
+    from datetime import timedelta
+    from .models import Agenda
+    rows = db.query(Agenda).filter(Agenda.user_id == user.id, Agenda.used.is_(False),
+                                   Agenda.created_at > datetime.now(timezone.utc) - timedelta(days=60)).all()
+    native = (meeting.native_id or "").strip()
+    started = meeting.started_at or meeting.created_at
+    if started and started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+
+    def gap(a):
+        s = a.starts_at
+        if not (s and started):
+            return None
+        if s.tzinfo is None:
+            s = s.replace(tzinfo=timezone.utc)
+        return abs((s - started).total_seconds()) / 60
+
+    best = None
+    if len(native) >= 6:
+        same = [a for a in rows if native in (a.link or "")]
+        best = min(same, key=lambda a: gap(a) if gap(a) is not None else 1e9) if same else None
+    if best is None:
+        near = [a for a in rows if gap(a) is not None and gap(a) <= AGENDA_MATCH_MINUTES]
+        best = min(near, key=gap) if near else None
+    if best is None:
+        return ""
+    best.used = True
+    return best.text
 
 
 def earlier_in_series(db, user, meeting):
@@ -541,11 +581,71 @@ def greet_meetings(db, user):
     return sent
 
 
+WEEKLY_HOUR = 9        # the Monday summary goes out from this hour (in the display time zone)
+
+
+def weekly_summary(db, user, force=False):
+    """On Monday morning, email last week's meetings, decisions and open tasks. Returns 1 when sent."""
+    from . import analytics
+    tz = _user_tz()
+    now = datetime.now(tz)
+    today = now.date().isoformat()
+    if not force and (not user.weekly or now.weekday() != 0 or now.hour < WEEKLY_HOUR or user.weekly_sent == today):
+        return 0
+    user.weekly_sent = today
+    db.commit()                      # marked first, so a slow or failed email isn't sent twice
+    since = datetime.now(timezone.utc) - timedelta(days=7)
+    meetings = (db.query(Meeting).filter(Meeting.user_id == user.id, Meeting.status == "done",
+                                         Meeting.created_at > since).order_by(Meeting.created_at).all())
+    open_tasks = db.query(Task).filter_by(user_id=user.id, done=False).all()
+    if not meetings and not open_tasks:
+        return 0
+    lines = []
+    if meetings:
+        lines.append("## Last week's meetings")
+        for m in meetings:
+            t = meeting_times(m)
+            when = (m.created_at if m.created_at.tzinfo else m.created_at.replace(tzinfo=timezone.utc)).astimezone(tz)
+            extra = f", {t['duration']}" if t["duration"] else ""
+            lines.append(f"- **{m.title}** · {when.strftime('%a')} {when.day} {when.strftime('%b')}{extra}")
+        decisions = [(d, m.title) for m in meetings for d in reports.section_bullets(m.report_md, "Key decisions")]
+        if decisions:
+            lines.append("\n## Decisions")
+            lines += [f"- {d} ({title})" for d, title in decisions[:15]]
+            if len(decisions) > 15:
+                lines.append(f"- …and {len(decisions) - 15} more on the Decisions page")
+    late, soon = [], []
+    for t in open_tasks:
+        said = (t.meeting.started_at or t.meeting.created_at) if t.meeting else t.created_at
+        if said and said.tzinfo is None:
+            said = said.replace(tzinfo=timezone.utc)
+        info = analytics.due_info(t.due, said.astimezone(tz).date() if said else now.date(), now.date())
+        who = f" ({t.owner})" if t.owner else ""
+        if info["state"] == "overdue":
+            late.append((info["date"], f"- {t.text}{who} · **{info['label']}**"))
+        elif info["state"] in ("today", "soon"):
+            soon.append((info["date"], f"- {t.text}{who} · {info['label']}"))
+    if late:
+        lines.append(f"\n## Overdue tasks ({len(late)})")
+        lines += [x for _, x in sorted(late)[:10]]
+    if soon:
+        lines.append("\n## Due this week")
+        lines += [x for _, x in sorted(soon)[:10]]
+    lines.append(f"\nYou have {len(open_tasks)} open task{'s' if len(open_tasks) != 1 else ''} in total.")
+    base = os.environ.get("PUBLIC_URL", "").rstrip("/")
+    week = f"{(now - timedelta(days=7)).day} {(now - timedelta(days=7)).strftime('%b')} – {now.day} {now.strftime('%b')}"
+    intro = (f"{len(meetings)} meeting{'s' if len(meetings) != 1 else ''} last week"
+             + (f", {len(late)} task{'s' if len(late) != 1 else ''} overdue." if late else "."))
+    mailer.send_report([user.email], f"Your week in meetings ({week})", "\n".join(lines), None,
+                       f"{base}/tasks" if base else None, hello=f"Hi {user.first_name},", intro=intro)
+    return 1
+
+
 def tick():
     """One pass over every user. Safe to call often; overlapping calls are skipped."""
     if not _lock.acquire(blocking=False):
         return {"skipped": True}
-    stats = {"users": 0, "reports": 0, "asked": 0, "greeted": 0, "briefs": 0, "telegram": 0, "errors": 0}
+    stats = {"users": 0, "reports": 0, "asked": 0, "greeted": 0, "briefs": 0, "weekly": 0, "telegram": 0, "errors": 0}
     db = Session()
     try:
         stats["telegram"] = handle_telegram(db)
@@ -566,6 +666,7 @@ def tick():
                 db.commit()
                 stats["briefs"] += send_briefs(db, user)
                 db.commit()
+                stats["weekly"] += weekly_summary(db, user)
             except Exception:
                 db.rollback()
                 stats["errors"] += 1

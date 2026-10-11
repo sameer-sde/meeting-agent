@@ -65,6 +65,11 @@ textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
       <p class="hint">About 10 minutes before each scheduled meeting, get a short note: what was decided last time, which tasks are still open and what is still unanswered. It comes on Telegram when connected, otherwise by email.</p>
       <label class="check"><input type="checkbox" name="brief_on" value="1" {{ 'checked' if g.user.briefs }}> Send me a brief before each scheduled meeting</label>
     </div>
+    <div class="card">
+      <h2>Monday summary</h2>
+      <p class="hint">Every Monday at 9 AM, one email with last week's meetings, what was decided, and which tasks are overdue or due this week. Nothing is sent in a week with no meetings and no open tasks.</p>
+      <label class="check"><input type="checkbox" name="weekly_on" value="1" {{ 'checked' if g.user.weekly }}> Email me a summary every Monday</label>
+    </div>
     <button class="btn accent" style="margin-top:18px">Save settings</button>
   </form>
 

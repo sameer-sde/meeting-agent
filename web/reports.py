@@ -212,6 +212,9 @@ Write in markdown, in exactly this shape and nothing else:
 - **<Next topic title>:** <...>
     - **<Sub-point title>:** <...>
 
+{agenda_block}## Open questions
+- <a question someone asked that was not answered or settled in the meeting> (asked by <name>)
+
 ## Follow-up tasks
 - **<Short task title>:** <what has to be done, as one clear sentence>. (<owner name, or several names separated by commas>)
 
@@ -226,14 +229,32 @@ Rules:
 - Topic and sub-point titles are short (2 to 6 words) and in Title Case.
 - Follow-up tasks and Action items list the same tasks. Write "Not set" when no owner or date was said.
   If there were no tasks, write "No follow-up tasks were recorded." under Follow-up tasks and leave out the table.
+- Open questions: only real questions left without an answer or decision. If there were none, write
+  "No open questions." under that heading.
 - Only include what was actually said. Do not invent names, numbers, dates or decisions.
 
 TRANSCRIPT:
 """
 
+AGENDA_BLOCK = """## Agenda check
+- **<agenda point, as written in the agenda>:** <Covered | Partly covered | Not covered>. <one short sentence on what was said, or "Not discussed.">
 
-def make_mom(lines, title, date, attendees):
-    prompt = MOM_PROMPT.format(title=title, date=date, attendees=", ".join(attendees) or "Not recorded")
+"""
+
+AGENDA_RULES = """
+AGENDA (written before the meeting, one point per line). Under "## Agenda check" list every agenda
+point in this order and say whether it was Covered, Partly covered or Not covered in the meeting:
+{agenda}
+"""
+
+
+def make_mom(lines, title, date, attendees, agenda=None):
+    points = [p.strip(" -*•\t") for p in (agenda or "").splitlines() if p.strip(" -*•\t")]
+    prompt = MOM_PROMPT.format(title=title, date=date, attendees=", ".join(attendees) or "Not recorded",
+                               agenda_block=AGENDA_BLOCK if points else "")
+    if points:
+        prompt = prompt.replace("\nTRANSCRIPT:\n", AGENDA_RULES.replace("{agenda}", "\n".join(f"- {p}" for p in points))
+                                + "\nTRANSCRIPT:\n", 1)
     return _llm(prompt + "\n".join(lines))
 
 

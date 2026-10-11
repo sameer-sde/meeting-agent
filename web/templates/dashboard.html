@@ -18,6 +18,8 @@
 .side{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;align-self:start}
 .side section+section{border-top:1px solid var(--line);margin-top:22px;padding-top:22px}
 .stack{display:grid;gap:8px}
+.stack textarea{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--ink);font:14px/1.5 Manrope,sans-serif;padding:11px 13px;resize:vertical}
+.stack textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .seg{display:flex;gap:4px;background:var(--panel2);padding:4px;border-radius:10px;border:1px solid var(--line)}
 .seg label{flex:1;text-align:center;padding:7px;border-radius:7px;font-size:13px;cursor:pointer;color:var(--muted);position:relative}
 .seg input{position:absolute;opacity:0;inset:0;cursor:pointer}
@@ -101,6 +103,7 @@ a.row:hover{background:var(--panel2)}
         <input type="text" name="title" placeholder="Title, e.g. Weekly sync" aria-label="Title">
         <input type="text" name="link" placeholder="Meeting link" required aria-label="Meeting link">
         <input type="datetime-local" name="when" required aria-label="Start time">
+        <textarea name="agenda" rows="3" maxlength="2500" placeholder="Agenda (optional), one point per line" aria-label="Agenda, one point per line"></textarea>
         <button class="btn ghost">Schedule meeting</button>
       </form>
     </section>
