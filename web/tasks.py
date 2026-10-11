@@ -156,7 +156,8 @@ def build_mom(db, user, meeting, lines=None):
     when = (meeting.created_at or datetime.now(timezone.utc)).astimezone(_user_tz()).strftime("%d %B %Y")
     if meeting.agenda is None:
         meeting.agenda = find_agenda(db, user, meeting)
-    return reports.make_mom(lines, meeting.title, when, attendees, meeting.agenda)
+    return reports.make_mom(lines, meeting.title, when, attendees, meeting.agenda,
+                            reports.kind_of(meeting.title, meeting.kind), user.vocab or "")
 
 
 AGENDA_MATCH_MINUTES = 45
@@ -226,7 +227,8 @@ def build_extras(db, user, meeting):
                     .order_by(Task.id.desc()).limit(30).all())
     previous = "\n".join(f"id {t.id}: {t.text} (owner: {t.owner or 'not set'}; due: {t.due or 'not set'})"
                          for t in promised)
-    data = reports.make_extras([f"[{i}] {r['speaker']}: {r['text']}" for i, r in enumerate(rows)], previous)
+    data = reports.make_extras([f"[{i}] {r['speaker']}: {r['text']}" for i, r in enumerate(rows)], previous,
+                               user.vocab or "")
 
     chapters, last = [], -1
     for c in data["chapters"][:12]:
@@ -428,7 +430,7 @@ def write_report(db, user, row, m=None):
             row.status = "empty"
             db.commit()
             return row
-        row.report_md = reports.make_report(lines)
+        row.report_md = reports.make_report(lines, user.vocab or "")
         row.status = "done"
         db.commit()                                   # the report card is safe from here on
     except Exception as e:

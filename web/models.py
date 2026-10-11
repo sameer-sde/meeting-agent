@@ -80,6 +80,7 @@ class User(Base):
     always_join: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
     weekly_on: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=True)   # Monday summary email
     weekly_sent: Mapped[str | None] = mapped_column(String(10), nullable=True)            # date it was last sent
+    vocab: Mapped[str | None] = mapped_column(Text, nullable=True)   # names and terms, spelled correctly, one per line
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
     meetings = relationship("Meeting", back_populates="user", cascade="all, delete-orphan")
@@ -166,6 +167,8 @@ class Meeting(Base):
     pinned: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)   # kept at the top of the dashboard
     speaker_map_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # {"name as heard": "corrected name"}
     agenda: Mapped[str | None] = mapped_column(Text, nullable=True)            # one point per line
+    kind: Mapped[str | None] = mapped_column(String(20), nullable=True)        # standard | status | interview
+    followup_email: Mapped[str | None] = mapped_column(Text, nullable=True)    # draft written on request
     tries: Mapped[int | None] = mapped_column(Integer, nullable=True)        # attempts at writing the report
     writing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # last attempt began
     followups_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # promise tracker; None = not looked for

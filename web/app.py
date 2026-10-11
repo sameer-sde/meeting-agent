@@ -4,6 +4,7 @@ Run locally:   python -m web.app        (opens on http://localhost:5050)
 Run online:    gunicorn web.app:app     (see README for Render setup)
 """
 import os
+import re
 import threading
 import time
 from datetime import datetime, timezone
@@ -564,7 +565,10 @@ def report(rid):
     from .reports import plain
     copies = {"summary": plain(m.report_md, "Summary"), "actions": plain(m.report_md, "Action items"),
               "all": f"{m.title}\n" + plain(m.report_md)}
+    fu_subject, fu_body = _split_subject(m.followup_email)
     return render_template("report.html", m=m, report_html=html, part_rows=part_rows, copies=copies,
+                           fu_subject=fu_subject, fu_body=fu_body,
+                           fu_to=",".join(p["email"] for p in share_to if p["status"].startswith("Attended")),
                            mentions=ments, people=people, chapters=chapters, share_to=share_to,
                            followups=followups, score=score,
                            widget=_widget("this meeting", url_for("ask", rid=m.id), url_for("chat_clear", rid=m.id),
@@ -574,6 +578,15 @@ def report(rid):
                            open_tasks=Session.query(Task).filter_by(meeting_id=m.id, done=False).count(),
                            lines=analytics.transcript_rows(segs, TZ, JUNK),
                            timeline=analytics.timeline(segs, TZ))
+
+
+def _split_subject(text):
+    """("subject", "body") from a draft whose first line is "Subject: ..."."""
+    text = (text or "").strip()
+    first, _, rest = text.partition("\n")
+    if first.lower().startswith("subject:"):
+        return first.split(":", 1)[1].strip(), rest.strip()
+    return "", text
 
 
 def _safe_name(m):
@@ -659,6 +672,27 @@ def fix_speaker(rid):
             t.owner, t.text = swap(t.owner)[:255], swap(t.text)
     Session.commit()
     flash(f"“{old}” now shows as “{new}” in this meeting.")
+    return redirect(back)
+
+
+@app.post("/report/<int:rid>/followup")
+@login_required
+def followup_email(rid):
+    """Write (or write again) a follow-up email draft from the report card. One AI call."""
+    from . import reports
+    m = _own_meeting(rid)
+    back = url_for("report", rid=rid) + "#followup"
+    if not m.report_md or m.status != "done":
+        return redirect(back)
+    rows = Session.query(Task).filter_by(meeting_id=m.id).order_by(Task.id).all()
+    task_lines = "\n".join(f"- {t.text} | owner: {t.owner or 'not set'} | due: {t.due or 'not set'}" for t in rows)
+    try:
+        m.followup_email = reports.make_followup(m.title, local_time(m.created_at, "%d %B %Y"),
+                                                 g.user.name or g.user.first_name, m.report_md, task_lines,
+                                                 g.user.vocab or "")
+        Session.commit()
+    except Exception as e:
+        flash(f"Couldn't write the email: {e}")
     return redirect(back)
 
 
@@ -1135,7 +1169,9 @@ def mom(rid):
     import re
     html = re.sub(r"(</strong>\s*)(Not covered|Partly covered|Covered)\b",
                   lambda x: x[1] + f'<span class="ag {x[2].split()[0].lower()}">{x[2]}</span>', html)
-    return render_template("mom.html", m=m, mom_html=html, people=people, prepared_for=g.user)
+    from .reports import KINDS, kind_of
+    return render_template("mom.html", m=m, mom_html=html, people=people, prepared_for=g.user,
+                           kinds=KINDS, kind=kind_of(m.title, m.kind), kind_chosen=m.kind in KINDS)
 
 
 def _mom_markdown(m):
@@ -1168,18 +1204,21 @@ def _mom_markdown(m):
 @login_required
 def mom_agenda(rid):
     """Add or change a meeting's agenda after the fact, and write the minutes again with it."""
+    from .reports import SHAPES
     m = _own_meeting(rid)
     m.agenda = _clean_agenda(request.form.get("agenda", ""))
+    if request.form.get("kind") in SHAPES:
+        m.kind = request.form["kind"]
     Session.commit()
     if request.form.get("rewrite"):
         try:
             m.mom_md = tasks.build_mom(Session(), g.user, m)
             Session.commit()
-            flash("Agenda saved and the minutes were written again with the agenda check.")
+            flash("Saved. The minutes were written again.")
         except Exception as e:
-            flash(f"Agenda saved, but the minutes couldn't be written again: {e}")
+            flash(f"Saved, but the minutes couldn't be written again: {e}")
     else:
-        flash("Agenda saved. Press Rewrite MOM to add the agenda check.")
+        flash("Saved. Press Rewrite MOM to write the minutes again with these changes.")
     return redirect(url_for("mom", rid=rid))
 
 
@@ -1310,6 +1349,9 @@ def settings():
                 flash("The Transcription key should start with vxa_tx_. On Vexa, choose 'Transcription Key' when creating it.")
                 return _back("settings")
             u.tx_key = tx
+        if "vocab" in request.form:
+            words = [" ".join(w.split())[:60] for w in re.split(r"[\n,]+", request.form["vocab"])]
+            u.vocab = "\n".join(dict.fromkeys(w for w in words if w))[:3000] or None
         if "report_to" in request.form:
             u.report_to = request.form["report_to"].strip()
         if request.form.get("bot_form"):

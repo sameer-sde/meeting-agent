@@ -62,6 +62,10 @@ pre{white-space:pre-wrap;font:12px/1.6 'JetBrains Mono',monospace;color:var(--mu
 .danger summary{color:var(--muted);text-decoration:underline;text-underline-offset:3px;display:inline-block}
 .danger[open]{border:1px solid #5A3328;border-radius:14px;padding:18px;background:#261D1A}
 .danger .hint{margin:12px auto;max-width:56ch}
+#followup input,#followup textarea{width:100%}
+#followup textarea{background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--ink);font:14px/1.55 Manrope,sans-serif;padding:12px 14px;resize:vertical}
+.fuacts{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:center}
+.fuacts form{margin:0}
 .fixname{margin:10px 0 4px}
 .fixname summary{cursor:pointer;text-decoration:underline;text-underline-offset:3px;color:var(--muted)}
 .fixname form{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:12px}
@@ -142,6 +146,7 @@ p.more{margin:14px 0 0}
     {% if lines %}<a class="btn ghost" href="{{ url_for('transcript_txt', rid=m.id) }}">Download transcript</a>{% endif %}
     {% if lines %}<button type="button" class="btn ghost" data-open-chat>Chat with this meeting</button>{% endif %}
     <a class="btn ghost" href="#share" onclick="document.getElementById('share').open=true">Share with attendees</a>
+    {% if m.status == 'done' and m.report_md %}<a class="btn ghost" href="#followup" onclick="document.getElementById('followup').open=true">Follow-up email</a>{% endif %}
     <form method="post" action="{{ url_for('pin', rid=m.id) }}" style="display:inline"><button class="btn ghost">{{ 'Unpin' if m.pinned else 'Pin to top' }}</button></form>
   </div>
   <details class="panel pop" id="share"><summary><h2>Share this report</h2></summary>
@@ -154,6 +159,23 @@ p.more{margin:14px 0 0}
       <label class="f" for="extra">Other email addresses (separate with commas)</label>
       <div class="tools"><input type="text" id="extra" name="extra" placeholder="name@company.com, another@company.com"><button class="btn accent">Send report</button></div>
     </form>
+  </details>
+  <details class="panel pop" id="followup" {{ 'open' if fu_body }}><summary><h2>Follow-up email</h2></summary>
+    {% if fu_body %}
+    <p class="hint">A draft from the report card. Check it, then copy it into Outlook or open it in your email app.</p>
+    <label class="f" for="fusub">Subject</label>
+    <input type="text" id="fusub" value="{{ fu_subject }}" aria-label="Email subject">
+    <label class="f" for="fubody">Email</label>
+    <textarea id="fubody" rows="14" aria-label="Email text">{{ fu_body }}</textarea>
+    <div class="fuacts">
+      <button type="button" class="btn accent" id="fucopy">Copy email</button>
+      <a class="btn ghost" id="fumail" href="#" data-to="{{ fu_to }}">Open in email app</a>
+      <form method="post" action="{{ url_for('followup_email', rid=m.id) }}"><button class="btn ghost">Write again</button></form>
+    </div>
+    {% else %}
+    <p class="hint">Writes a short thank-you email with the key points and who owes what, ready to send to the attendees. Uses one AI call.</p>
+    <form method="post" action="{{ url_for('followup_email', rid=m.id) }}"><button class="btn accent">Write the email</button></form>
+    {% endif %}
   </details>
   <section class="panel rec" id="recording" hidden>
     <span class="mono">RECORDING</span>
@@ -380,6 +402,20 @@ p.more{margin:14px 0 0}
     if (isFinite(player.duration)) { player.currentTime = at; player.play(); return; }
     wantAt = at;                 // length not known yet: remember the spot, it is used once the length is worked out
     if (player.readyState > 0) fixLength(); else player.play();
+  });
+})();
+
+(function(){
+  var c=document.getElementById('fucopy');if(!c)return;
+  var sub=document.getElementById('fusub'),body=document.getElementById('fubody'),mail=document.getElementById('fumail');
+  c.addEventListener('click',function(){
+    var t='Subject: '+sub.value+'\n\n'+body.value;
+    (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).catch(function(){body.select();document.execCommand('copy');})
+      .then(function(){c.textContent='Copied';setTimeout(function(){c.textContent='Copy email'},2500);});
+  });
+  mail.addEventListener('click',function(e){
+    e.preventDefault();
+    location.href='mailto:'+encodeURIComponent(mail.dataset.to).replace(/%2C/g,',')+'?subject='+encodeURIComponent(sub.value)+'&body='+encodeURIComponent(body.value);
   });
 })();
 </script>

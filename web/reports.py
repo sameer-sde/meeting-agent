@@ -1,5 +1,6 @@
 """Turns a transcript into a report card, using Gemini online (or Ollama when running locally)."""
 import os
+import re
 import time
 
 import requests
@@ -191,8 +192,22 @@ def _ollama(prompt):
     return r.json()["response"].strip()
 
 
-def make_report(lines):
-    return _llm(PROMPT + "\n".join(lines))
+def words_note(words):
+    """A line telling the AI how team names and terms are spelled, or "" when there are none."""
+    items = [w.strip() for w in re.split(r"[\n,]+", words or "") if w.strip()][:80]
+    if not items:
+        return ""
+    return ("\nNAMES AND TERMS used by this team, spelled correctly. The transcript may spell or hear them "
+            "wrongly; always write them exactly like this: " + ", ".join(items) + "\n")
+
+
+def _with_words(prompt, words):
+    note = words_note(words)
+    return prompt.replace("\nTRANSCRIPT:\n", note + "\nTRANSCRIPT:\n", 1) if note else prompt
+
+
+def make_report(lines, words=""):
+    return _llm(_with_words(PROMPT, words) + "\n".join(lines))
 
 
 MOM_PROMPT = """You are writing the Minutes of Meeting (MOM) from a meeting transcript.
@@ -205,13 +220,7 @@ Attendees (already listed separately, do not repeat them as a section): {attende
 
 Write in markdown, in exactly this shape and nothing else:
 
-## Meeting notes
-- **<Topic title>:** <one or two sentences: who discussed it (their names) and what was explained or agreed>
-    - **<Sub-point title>:** <one or two sentences with the detail, naming who said what>
-    - **<Sub-point title>:** <...>
-- **<Next topic title>:** <...>
-    - **<Sub-point title>:** <...>
-
+{shape}
 {agenda_block}## Open questions
 - <a question someone asked that was not answered or settled in the meeting> (asked by <name>)
 
@@ -224,9 +233,7 @@ Write in markdown, in exactly this shape and nothing else:
 | 1 | <short action> | <owner> | <deadline as it was said> | Open |
 
 Rules:
-- Topics follow the order of the meeting. Use 2 topics for a short meeting and up to 8 for a long one.
-- Every topic has 2 to 5 sub-points, indented with exactly 4 spaces.
-- Topic and sub-point titles are short (2 to 6 words) and in Title Case.
+{shape_rules}
 - Follow-up tasks and Action items list the same tasks. Write "Not set" when no owner or date was said.
   If there were no tasks, write "No follow-up tasks were recorded." under Follow-up tasks and leave out the table.
 - Open questions: only real questions left without an answer or decision. If there were none, write
@@ -235,6 +242,68 @@ Rules:
 
 TRANSCRIPT:
 """
+
+KINDS = {"standard": "Standard (Teams style)", "status": "Daily status update", "interview": "Interview"}
+
+SHAPES = {
+    "standard": ("""## Meeting notes
+- **<Topic title>:** <one or two sentences: who discussed it (their names) and what was explained or agreed>
+    - **<Sub-point title>:** <one or two sentences with the detail, naming who said what>
+    - **<Sub-point title>:** <...>
+- **<Next topic title>:** <...>
+    - **<Sub-point title>:** <...>
+""", """- Topics follow the order of the meeting. Use 2 topics for a short meeting and up to 8 for a long one.
+- Every topic has 2 to 5 sub-points, indented with exactly 4 spaces.
+- Topic and sub-point titles are short (2 to 6 words) and in Title Case."""),
+    "status": ("""## Team updates
+- **<Person's name>:**
+    - **Done:** <what they finished since the last update>
+    - **Next:** <what they will work on next>
+    - **Blockers:** <what is stopping them, or "None">
+- **<Next person's name>:**
+    - **Done:** <...>
+    - **Next:** <...>
+    - **Blockers:** <...>
+
+## Blockers to follow up
+- **<Short blocker title>:** <what is blocked, who is affected and who can help> (<person>)
+
+## Decisions
+- <what was decided>
+""", """- This is a daily status / stand-up meeting. Give one entry per person who gave an update, in the order they spoke.
+- Done, Next and Blockers are indented with exactly 4 spaces. Write "Not mentioned" when a person did not say it.
+- Under "Blockers to follow up" list only real blockers; write "No blockers." when there were none.
+- Under "Decisions" write "No decisions were recorded." when there were none."""),
+    "interview": ("""## Candidate summary
+<two or three sentences: who the candidate is, the role, and the overall impression from what was said>
+
+## Questions and answers
+- **<Topic of the question>:** <what was asked and, in one or two sentences, how the candidate answered>
+
+## Strengths
+- <a strength shown in the answers>
+
+## Concerns
+- <a gap or concern from the answers, or "None noted.">
+
+## Next steps
+- <what the interviewers said happens next>
+""", """- This is a job interview. Use the candidate's and interviewers' names as said.
+- Only report what was said. Do not score or judge the candidate beyond what the interviewers themselves said."""),
+}
+
+
+def kind_of(title, chosen=None):
+    """The meeting type: the one picked by the user, else a guess from the title."""
+    if chosen in SHAPES:
+        return chosen
+    t = (title or "").lower()
+    if re.search(r"\b(status|stand-?up|daily|scrum|sync-?up)\b", t):
+        return "status"
+    if re.search(r"\binterview", t):
+        return "interview"
+    return "standard"
+
 
 AGENDA_BLOCK = """## Agenda check
 - **<agenda point, as written in the agenda>:** <Covered | Partly covered | Not covered>. <one short sentence on what was said, or "Not discussed.">
@@ -248,10 +317,12 @@ point in this order and say whether it was Covered, Partly covered or Not covere
 """
 
 
-def make_mom(lines, title, date, attendees, agenda=None):
+def make_mom(lines, title, date, attendees, agenda=None, kind="standard", words=""):
     points = [p.strip(" -*•\t") for p in (agenda or "").splitlines() if p.strip(" -*•\t")]
+    shape, shape_rules = SHAPES.get(kind) or SHAPES["standard"]
     prompt = MOM_PROMPT.format(title=title, date=date, attendees=", ".join(attendees) or "Not recorded",
-                               agenda_block=AGENDA_BLOCK if points else "")
+                               agenda_block=AGENDA_BLOCK if points else "", shape=shape, shape_rules=shape_rules)
+    prompt = _with_words(prompt, words)
     if points:
         prompt = prompt.replace("\nTRANSCRIPT:\n", AGENDA_RULES.replace("{agenda}", "\n".join(f"- {p}" for p in points))
                                 + "\nTRANSCRIPT:\n", 1)
@@ -303,11 +374,54 @@ def _json_from(text):
         return {}
 
 
-def make_extras(numbered_lines, previous=""):
+def make_extras(numbered_lines, previous="", words=""):
     """Chapters, action items and follow-ups on earlier tasks: {"chapters", "tasks", "followups"}."""
-    prompt = EXTRAS_PROMPT.replace("{previous}", previous or "(none)")
+    prompt = _with_words(EXTRAS_PROMPT.replace("{previous}", previous or "(none)"), words)
     data = _json_from(_llm(prompt + "\n".join(numbered_lines), as_json=True))
     return {k: [x for x in data.get(k) or [] if isinstance(x, dict)] for k in ("chapters", "tasks", "followups")}
+
+
+FOLLOWUP_PROMPT = """Write a short follow-up email after a meeting. It is sent by {sender} to the people who
+attended. Use only the meeting notes below; do not invent anything.
+
+Meeting: {title}
+Date: {date}
+
+Write plain text (no markdown, no ** or #), in this order:
+Subject: <short subject line>
+
+Hi all,
+
+<one sentence thanking everyone and naming the meeting>
+
+<"Key points:" followed by 2 to 5 lines starting with "- ", the main decisions or outcomes>
+
+<"Action items:" followed by one line per task starting with "- ": task – owner – due date (leave out
+the parts that were not set). Leave this part out if there are no tasks.>
+
+<one sentence on next steps or the next meeting, only if the notes mention it>
+
+<one short closing line inviting corrections>
+
+Regards,
+{sender}
+
+Keep it under 180 words, polite and professional. Write everything in clear English.
+{words}
+MEETING NOTES:
+{notes}
+
+TASKS:
+{tasks}
+"""
+
+
+def make_followup(title, date, sender, notes, tasks, words=""):
+    prompt = (FOLLOWUP_PROMPT.replace("{title}", title or "the meeting").replace("{date}", date)
+              .replace("{sender}", sender or "me").replace("{words}", words_note(words))
+              .replace("{notes}", notes or "(none)").replace("{tasks}", tasks or "(none)"))
+    text = _llm(prompt).strip().replace("**", "")
+    return re.sub(r"^```\w*\n?|\n?```$", "", text).strip()
 
 
 def chat_json(prompt):
