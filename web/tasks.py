@@ -583,6 +583,83 @@ def greet_meetings(db, user):
     return sent
 
 
+# ---------- reminders for late tasks ----------
+
+REMIND_EVERY_HOURS = 20
+
+
+def email_book(db, user_id):
+    """Names on the People page mapped to their email, by full name and by first name."""
+    from .models import Person
+    book, firsts = {}, {}
+    for p in db.query(Person).filter_by(user_id=user_id):
+        if not (p.email or "").strip():
+            continue
+        name = " ".join((p.name or "").lower().split())
+        book.setdefault(name, p.email.strip())
+        first = name.split(" ")[0] if name else ""
+        firsts.setdefault(first, set()).add(p.email.strip())
+    for first, found in firsts.items():     # a first name only counts when one person has it
+        if first and len(found) == 1:
+            book.setdefault(first, next(iter(found)))
+    return book
+
+
+def owner_email(owner, book):
+    """The email of a task's owner, or "" when it can't be told for sure. Tasks with several owners
+    ("Sarah, James") are not matched."""
+    name = " ".join((owner or "").lower().split())
+    if not name or "," in name or " and " in name or "&" in name:
+        return ""
+    return book.get(name) or book.get(name.split(" ")[0], "")
+
+
+def reminded_recently(t):
+    if not t.reminded_at:
+        return False
+    at = t.reminded_at if t.reminded_at.tzinfo else t.reminded_at.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - at).total_seconds() < REMIND_EVERY_HOURS * 3600
+
+
+def task_due(t, today=None):
+    """due_info() for a task, measured from the day of the meeting it came from."""
+    from . import analytics
+    tz = _user_tz()
+    today = today or datetime.now(tz).date()
+    said = (t.meeting.started_at or t.meeting.created_at) if t.meeting else t.created_at
+    if said and said.tzinfo is None:
+        said = said.replace(tzinfo=timezone.utc)
+    return analytics.due_info(t.due, said.astimezone(tz).date() if said else today, today, done=t.done)
+
+
+def send_reminder(db, user, t):
+    """Email a task's owner a friendly reminder. Returns the line to show; raises ValueError with a
+    readable reason when it can't be sent."""
+    email = owner_email(t.owner, email_book(db, user.id))
+    if t.done:
+        raise ValueError("That task is already done.")
+    if not email:
+        raise ValueError(f"Add {t.owner or 'the owner'}'s email on the People page first, then you can remind them.")
+    if reminded_recently(t):
+        raise ValueError(f"{t.owner} was already reminded today.")
+    m = t.meeting
+    info = task_due(t)
+    meeting = f"{m.title} ({(m.created_at if m.created_at.tzinfo else m.created_at.replace(tzinfo=timezone.utc)).astimezone(_user_tz()).strftime('%d %b')})" if m else "a meeting"
+    sender = user.name or user.first_name
+    late = info["state"] == "overdue"
+    body = (f"## Task\n- **What:** {t.text}\n- **Due:** {info['label'] or t.due or 'Not set'}\n"
+            f"- **From the meeting:** {meeting}\n\nPlease reply to {sender} with an update.")
+    sent = mailer.send_report([email], f"Reminder: {t.text[:70]}", body, None, None,
+                              hello=f"Hi {(t.owner or '').split(' ')[0]},",
+                              intro=f"{sender} is sending a friendly reminder about a task from {meeting}"
+                                    + (" that is now past its due date." if late else "."))
+    if not sent:
+        raise ValueError("Email isn't set up on this site, so the reminder couldn't be sent.")
+    t.reminded_at = datetime.now(timezone.utc)
+    db.commit()
+    return f"Reminder sent to {t.owner} ({email})."
+
+
 WEEKLY_HOUR = 9        # the Monday summary goes out from this hour (in the display time zone)
 
 

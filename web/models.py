@@ -210,6 +210,19 @@ class ChatMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class ChatFeedback(Base):
+    """A thumbs up or down on a chatbot answer, kept (even after the chat is cleared) to improve it."""
+    __tablename__ = "chat_feedback"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    question: Mapped[str] = mapped_column(Text, default="")
+    answer: Mapped[str] = mapped_column(Text, default="")
+    rating: Mapped[int] = mapped_column(Integer, default=0)       # 1 good, -1 bad
+    note: Mapped[str] = mapped_column(Text, default="")           # where it was asked
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class Agenda(Base):
     """An agenda typed when scheduling a meeting, waiting for that meeting to happen."""
     __tablename__ = "agendas"

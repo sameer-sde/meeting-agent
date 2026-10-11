@@ -71,6 +71,10 @@ textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
       <textarea name="vocab" rows="4" maxlength="3000" placeholder="ADNOC&#10;SharePoint&#10;Sangeeth, Suhaib, Waseem&#10;SDD, UAT">{{ g.user.vocab or '' }}</textarea>
     </div>
     <div class="card">
+      <h2>Chatbot feedback</h2>
+      <p class="hint">Press 👍 or 👎 under any chatbot answer. <a href="{{ url_for('chat_feedback') }}">See the answers you marked</a>, to spot where it goes wrong.</p>
+    </div>
+    <div class="card">
       <h2>Monday summary</h2>
       <p class="hint">Every Monday at 9 AM, one email with last week's meetings, what was decided, and which tasks are overdue or due this week. Nothing is sent in a week with no meetings and no open tasks.</p>
       <label class="check"><input type="checkbox" name="weekly_on" value="1" {{ 'checked' if g.user.weekly }}> Email me a summary every Monday</label>

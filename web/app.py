@@ -786,6 +786,8 @@ def _chat_reply(kind, where, meeting=None, rows=None, material="", empty=None):
     question = " ".join(((request.get_json(silent=True) or {}).get("question") or "").split())[:500]
     if not question:
         return jsonify(error="Type a question first."), 400
+    if callable(material):              # the all-meetings chat picks its meetings from the question
+        material = material(question)
     if not (rows or material):
         return jsonify(error=empty or ("Nothing has been said in this meeting yet." if kind == "live" else
                                        "This meeting has no transcript to ask about.")), 400
@@ -816,7 +818,8 @@ def _chat_reply(kind, where, meeting=None, rows=None, material="", empty=None):
 @app.post("/chat/ask")
 @login_required
 def chat_all():
-    return _chat_reply("all", {"meeting_id": None, "live_key": ALL_KEY}, material=chat.all_material(g.user),
+    user = g.user
+    return _chat_reply("all", {"meeting_id": None, "live_key": ALL_KEY}, material=lambda q: chat.all_material(user, q),
                        empty="You have no report cards yet. Ask me again after your first meeting.")
 
 
@@ -826,6 +829,31 @@ def chat_all_clear():
     Session.query(ChatMessage).filter_by(user_id=g.user.id, meeting_id=None, live_key=ALL_KEY).delete()
     Session.commit()
     return redirect(request.referrer or url_for("index"))
+
+
+@app.post("/chat/rate/<int:mid>")
+@login_required
+def chat_rate(mid):
+    msg = Session.get(ChatMessage, mid)
+    if not msg or msg.user_id != g.user.id or msg.role != "bot":
+        abort(404)
+    try:
+        value = int((request.get_json(silent=True) or {}).get("v", 0))
+    except (TypeError, ValueError):
+        value = 0
+    chat.rate(g.user, msg, value if value in (-1, 0, 1) else 0)
+    return jsonify(ok=True, v=value)
+
+
+@app.route("/chat/feedback")
+@login_required
+def chat_feedback():
+    """Chatbot answers the user marked with a thumbs down, to see where it goes wrong."""
+    from .models import ChatFeedback
+    rows = (Session.query(ChatFeedback).filter_by(user_id=g.user.id)
+            .order_by(ChatFeedback.created_at.desc()).limit(200).all())
+    return render_template("chat_feedback.html", rows=rows,
+                           bad=sum(1 for r in rows if r.rating < 0), good=sum(1 for r in rows if r.rating > 0))
 
 
 @app.post("/chat/action/<int:mid>/<what>")
@@ -954,79 +982,27 @@ def tasks_page():
 
 
 def _email_book():
-    """Names on the People page mapped to their email, by full name and by first name."""
-    from .models import Person
-    book, firsts = {}, {}
-    for p in Session.query(Person).filter_by(user_id=g.user.id):
-        if not (p.email or "").strip():
-            continue
-        name = " ".join((p.name or "").lower().split())
-        book.setdefault(name, p.email.strip())
-        first = name.split(" ")[0] if name else ""
-        firsts.setdefault(first, set()).add(p.email.strip())
-    for first, found in firsts.items():     # a first name only counts when one person has it
-        if first and len(found) == 1:
-            book.setdefault(first, next(iter(found)))
-    return book
+    return tasks.email_book(Session(), g.user.id)
 
 
 def _owner_email(owner, book):
-    """The email of a task's owner, or "" when it can't be told for sure. Tasks with several owners
-    ("Sarah, James") are not matched."""
-    name = " ".join((owner or "").lower().split())
-    if not name or "," in name or " and " in name or "&" in name:
-        return ""
-    return book.get(name) or book.get(name.split(" ")[0], "")
-
-
-REMIND_EVERY_HOURS = 20
+    return tasks.owner_email(owner, book)
 
 
 def _reminded_recently(t):
-    if not t.reminded_at:
-        return False
-    at = t.reminded_at if t.reminded_at.tzinfo else t.reminded_at.replace(tzinfo=timezone.utc)
-    return (datetime.now(timezone.utc) - at).total_seconds() < REMIND_EVERY_HOURS * 3600
+    return tasks.reminded_recently(t)
 
 
 @app.post("/tasks/<int:tid>/remind")
 @login_required
 def task_remind(tid):
     """Email the owner of a late task a short reminder (at most once a day per task)."""
-    from . import analytics, mailer
     t = _own_task(tid)
-    back = redirect(url_for("tasks_page", show=request.form.get("show", "open")))
-    email = _owner_email(t.owner, _email_book())
-    if t.done or not email:
-        flash("Add this person's email on the People page first, then you can remind them.")
-        return back
-    if _reminded_recently(t):
-        flash(f"{t.owner} was already reminded today.")
-        return back
-    m = t.meeting
-    said_on = (m.started_at or m.created_at) if m else t.created_at
-    if said_on and said_on.tzinfo is None:
-        said_on = said_on.replace(tzinfo=timezone.utc)
-    today = datetime.now(TZ).date()
-    info = analytics.due_info(t.due, said_on.astimezone(TZ).date() if said_on else today, today)
-    meeting = f"{m.title} ({local_time(m.created_at, '%d %b')})" if m else "a meeting"
-    sender = g.user.name or g.user.first_name
-    body = (f"## Task\n- **What:** {t.text}\n- **Due:** {info['label'] or t.due or 'Not set'}\n"
-            f"- **From the meeting:** {meeting}\n\nPlease reply to {sender} with an update.")
     try:
-        sent = mailer.send_report([email], f"Reminder: {t.text[:70]}", body, None, None,
-                                  hello=f"Hi {(t.owner or '').split(' ')[0]},",
-                                  intro=f"{sender} is sending a friendly reminder about a task from {meeting} that is now past its due date.")
+        flash(tasks.send_reminder(Session(), g.user, t))
     except Exception as e:
-        flash(f"Couldn't send the reminder: {e}")
-        return back
-    if not sent:
-        flash("Email isn't set up on this site, so the reminder couldn't be sent.")
-        return back
-    t.reminded_at = datetime.now(timezone.utc)
-    Session.commit()
-    flash(f"Reminder sent to {t.owner} ({email}).")
-    return back
+        flash(str(e))
+    return redirect(url_for("tasks_page", show=request.form.get("show", "open")))
 
 
 # ---------- Decisions (every decision from every meeting) ----------

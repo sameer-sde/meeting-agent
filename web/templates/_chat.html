@@ -53,6 +53,15 @@
 .cb-clear{padding:0 14px 10px;margin:0}
 .linkbtn{background:none;border:0;padding:0;color:var(--muted);font:12px Manrope,sans-serif;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 @media(max-width:520px){.cb-btn{right:14px;bottom:14px}.cb-win{left:8px;right:8px;bottom:82px;width:auto;max-width:none}}
+.rate{display:flex;gap:4px;margin-top:6px;opacity:.55}
+.msg.bot:hover .rate,.rate:focus-within,.rate [aria-pressed=true]{opacity:1}
+.rate button{background:none;border:1px solid transparent;border-radius:8px;padding:1px 5px;font-size:13px;cursor:pointer;filter:grayscale(1)}
+.rate button:hover{border-color:var(--line)}
+.rate button[aria-pressed=true]{filter:none;border-color:var(--line);background:var(--panel2)}
+.next{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.msg.bot:not(:last-child) .next{display:none}
+#cb:has(.msg.bot:last-child .next) #chips{display:none}
+.act-ok a{color:inherit;font-weight:700}
 @media print{.cb-btn,.cb-win{display:none!important}}
 </style>
 {% set bot_icon %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v3"/><circle cx="12" cy="2.5" r="1" fill="currentColor"/><rect x="4" y="6" width="16" height="12" rx="4"/><circle cx="9" cy="12" r="1.2" fill="currentColor"/><circle cx="15" cy="12" r="1.2" fill="currentColor"/><path d="M9.5 15.2c1.5 1 3.5 1 5 0"/><path d="M2 11v3M22 11v3"/><path d="M9 18l-1.5 3 4-3"/></svg>{% endset %}
@@ -203,6 +212,15 @@
 
   // ---- Confirm / Cancel on something the bot offered to do ----
   msgs.addEventListener('click', function (e) {
+    var nq = e.target.closest('.nextq');
+    if (nq) { send(nq.textContent); return; }
+    var rb = e.target.closest('[data-rate]');
+    if (rb) {                                  // thumbs up / down; pressing the same one again clears it
+      var box2 = rb.closest('.rate'), on = rb.getAttribute('aria-pressed') === 'true', v = on ? 0 : +rb.dataset.rate;
+      [].forEach.call(box2.querySelectorAll('[data-rate]'), function (x) { x.setAttribute('aria-pressed', (+x.dataset.rate === v) ? 'true' : 'false'); });
+      fetch('{{ url_for("chat_rate", mid=0) }}'.replace('/0', '/' + box2.dataset.id), {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({v: v})});
+      return;
+    }
     var b = e.target.closest('[data-do]');
     if (b) {
       var box = b.closest('.act'), bubble = b.closest('.msg');

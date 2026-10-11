@@ -13,8 +13,18 @@
 <div class="act" data-id="{{ msg.id }}">
   <div class="act-say">{{ x.action.say }}</div>
   {% if x.action.status == 'pending' %}<div class="act-btns"><button type="button" class="btn accent" data-do="confirm">Confirm</button><button type="button" class="btn ghost" data-do="cancel">Cancel</button></div>
-  {% elif x.action.status == 'done' %}<div class="act-ok">✓ {{ x.action.result }}</div>
+  {% elif x.action.status == 'done' %}<div class="act-ok">✓ {{ x.action.result }}{% if x.action.link %} <a href="{{ x.action.link }}">{{ x.action.link_text or 'Open' }}</a>{% endif %}</div>
   {% elif x.action.status == 'failed' %}<div class="act-bad">Couldn't do it: {{ x.action.result }}</div>
   {% else %}<div class="act-off">Cancelled. Nothing was changed.</div>{% endif %}
 </div>
+{%- endif %}
+
+{%- if msg.id %}
+<div class="rate" data-id="{{ msg.id }}">
+  <button type="button" data-rate="1" aria-pressed="{{ 'true' if x.rating == 1 else 'false' }}" aria-label="Good answer" title="Good answer">👍</button>
+  <button type="button" data-rate="-1" aria-pressed="{{ 'true' if x.rating == -1 else 'false' }}" aria-label="Bad answer" title="Bad answer: helps us improve">👎</button>
+</div>
+{%- endif %}
+{%- if x.next %}
+<div class="next">{% for q in x.next %}<button type="button" class="chip nextq">{{ q }}</button>{% endfor %}</div>
 {%- endif %}
