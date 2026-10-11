@@ -1,0 +1,49 @@
+{% extends "shell.html" %}
+{% block title %}Projects · Meeting Agent{% endblock %}
+{% block css %}
+.wrap{max-width:1000px;margin:0 auto;padding:36px 20px 72px}
+.wrap h1{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:40px;margin:0 0 6px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px;margin-top:22px}
+.card{display:block;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 22px;color:inherit;text-decoration:none;transition:border-color .15s}
+.card:hover{border-color:var(--accent)}
+.card h2{font-family:Newsreader,Georgia,serif;font-weight:400;font-size:24px;line-height:1.2;margin:0 0 8px;overflow-wrap:break-word}
+.card .sum{color:var(--muted);font-size:14px;line-height:1.5;margin:0 0 14px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.stats{display:flex;gap:8px;flex-wrap:wrap}
+.stats span{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--muted)}
+.stats .warn{color:#F2A08C;border-color:#6B3A2E;background:#2E1F1B}
+.stats .chg{color:var(--gold);border-color:#5A4A2A;background:#2B261C}
+details.singles{margin-top:30px}
+details.singles summary{cursor:pointer;color:var(--muted)}
+.list{list-style:none;margin:12px 0 0;padding:0;background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.list li+li{border-top:1px solid var(--line)}
+.list a{display:flex;justify-content:space-between;gap:12px;padding:12px 18px;color:inherit;text-decoration:none}
+.list a:hover{background:var(--panel2)}
+.none{color:var(--muted);background:var(--panel);border:1px dashed var(--line);border-radius:16px;padding:18px 20px;margin-top:22px}
+{% endblock %}
+{% block page %}
+<div class="wrap">
+  <h1>Projects</h1>
+  <p class="hint">Meetings that belong together, grouped by their title. Open a project to see its story: what changed between meetings, what is still open, and a status update ready to send. Move a meeting to another project from its report page.</p>
+  {% if groups %}
+  <div class="grid">{% for r in groups %}
+    <a class="card" href="{{ url_for('project_page', pid=r.p.id) }}">
+      <h2>{{ r.p.name }}</h2>
+      <p class="sum">{{ r.story.summary if r.story and r.story.summary else 'Open to write the story of these meetings.' }}</p>
+      <div class="stats">
+        <span>{{ r.count }} meetings</span>
+        <span>Last {{ r.last.created_at|local('%d %b') }}</span>
+        {% if r.open %}<span class="warn">{{ r.open }} open task{{ 's' if r.open != 1 }}</span>{% endif %}
+        {% if r.story and r.story.changes %}<span class="chg">{{ r.story.changes|length }} change{{ 's' if r.story.changes|length != 1 }}</span>{% endif %}
+      </div>
+    </a>
+  {% endfor %}</div>
+  {% else %}
+  <p class="none">Projects appear here once two meetings share a title, for example a weekly status call. You can also put any meeting into a project from its report page.</p>
+  {% endif %}
+  {% if singles %}
+  <details class="singles" {{ 'open' if not groups }}><summary>{{ singles|length }} meeting{{ 's' if singles|length != 1 }} not part of a series yet</summary>
+    <ul class="list">{% for r in singles %}<li><a href="{{ url_for('project_page', pid=r.p.id) }}"><span>{{ r.p.name }}</span><span class="hint">{{ r.last.created_at|local('%d %b') }}</span></a></li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+</div>
+{% endblock %}

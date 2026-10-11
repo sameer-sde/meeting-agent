@@ -424,6 +424,42 @@ def make_followup(title, date, sender, notes, tasks, words=""):
     return re.sub(r"^```\w*\n?|\n?```$", "", text).strip()
 
 
+STORY_PROMPT = """Below are the report cards of several meetings that belong to one project: "{name}".
+They are in date order, oldest first. Read them as one story.
+
+Reply with JSON only, in exactly this shape:
+{"summary": "2 or 3 sentences: where this project stands now",
+ "timeline": [{"meeting_id": 3, "headline": "the main outcome of that meeting, one short sentence"}],
+ "changes": [{"topic": "short name", "before": "what was said or decided earlier", "before_meeting": 3,
+              "after": "what it changed to later", "after_meeting": 7}],
+ "open": [{"item": "a task or question still not closed", "owner": "name or empty",
+           "since_meeting": 3, "times_raised": 2}],
+ "people": [{"name": "name", "role": "their part in this project, a few words"}],
+ "update": "a status update of 80 to 120 words, plain text, that can be pasted into an email or chat"}
+
+Rules:
+- timeline: one entry per meeting, oldest first.
+- changes: ONLY real changes, where a later meeting changed, reversed or replaced something an earlier
+  meeting said or decided (a scope, a date, an owner, a number, an approach). Use an empty list when
+  nothing changed. Never list things that were simply decided for the first time.
+- open: tasks and questions that are still open at the latest meeting. "since_meeting" is the first
+  meeting where it came up; "times_raised" is in how many meetings it came up. Use the OPEN TASKS too.
+- Use only what the report cards say. Do not invent names, dates or decisions. Write in clear English.
+{words}
+OPEN TASKS:
+{tasks}
+
+REPORT CARDS:
+{cards}
+"""
+
+
+def make_story(name, cards, tasks, words=""):
+    prompt = (STORY_PROMPT.replace("{name}", name or "this project").replace("{words}", words_note(words))
+              .replace("{tasks}", tasks or "(none)").replace("{cards}", cards))
+    return _json_from(_llm(prompt, as_json=True))
+
+
 def chat_json(prompt):
     """One chat turn. The model is asked for JSON; if it sends plain text, that text is the answer."""
     raw = _llm(prompt, as_json=True, fast=True)

@@ -66,6 +66,9 @@ pre{white-space:pre-wrap;font:12px/1.6 'JetBrains Mono',monospace;color:var(--mu
 #followup textarea{background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--ink);font:14px/1.55 Manrope,sans-serif;padding:12px 14px;resize:vertical}
 .fuacts{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:center}
 .fuacts form{margin:0}
+.projsel form{margin-top:8px}
+.projsel select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;flex:1;min-width:0}
+.projlink{display:inline-block;margin-top:10px;color:var(--accent);font-weight:600;text-decoration:none}
 h3.sub{font:600 14px Manrope,sans-serif;margin:18px 0 8px;color:var(--ink)}
 .links{margin:0 0 6px;padding-left:20px}
 .links li{margin:4px 0;overflow-wrap:anywhere}
@@ -138,7 +141,18 @@ p.more{margin:14px 0 0}
   <div class="meta"><h1>{{ m.title }}</h1>
     <details class="pop rename"><summary class="mono">Rename</summary>
       <form method="post" action="{{ url_for('rename', rid=m.id) }}"><input type="text" name="title" value="{{ m.title }}" maxlength="200" required aria-label="Meeting name"><button class="btn accent">Save</button></form>
-    </details><span class="mono">{{ m.created_at|local('%d %b %Y, %I:%M %p') }}</span>{% if m.platform %}<span class="mono">{{ m.platform|platform_name }}</span>{% endif %}</div>
+    </details><span class="mono">{{ m.created_at|local('%d %b %Y, %I:%M %p') }}</span>{% if m.platform %}<span class="mono">{{ m.platform|platform_name }}</span>{% endif %}
+    {% if project %}<details class="pop rename projsel"><summary class="mono">Project: {{ project.name }}</summary>
+      <a class="projlink" href="{{ url_for('project_page', pid=project.id) }}">Open the project story →</a>
+      <form method="post" action="{{ url_for('meeting_project', rid=m.id) }}">
+        <select name="project_id" aria-label="Move to project">{% for p in all_projects %}<option value="{{ p.id }}" {{ 'selected' if p.id == project.id }}>{{ p.name }}</option>{% endfor %}</select>
+        <button class="btn ghost">Move</button>
+      </form>
+      <form method="post" action="{{ url_for('meeting_project', rid=m.id) }}">
+        <input type="text" name="new_name" maxlength="200" placeholder="Or a new project name" aria-label="New project name" required>
+        <button class="btn ghost">Create and move</button>
+      </form>
+    </details>{% endif %}</div>
   {% set t = times(m) %}{% if t.start or t.duration %}
   <dl class="when">
     <div><dt>Started</dt><dd>{{ t.start or '—' }}</dd></div>

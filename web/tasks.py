@@ -163,6 +163,10 @@ def build_mom(db, user, meeting, lines=None):
 AGENDA_MATCH_MINUTES = 45
 
 
+def _aware(dt):
+    return dt if dt is None or dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 def find_agenda(db, user, meeting):
     """The agenda typed when this meeting was scheduled, or "" when there was none.
 

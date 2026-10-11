@@ -172,6 +172,8 @@ class Meeting(Base):
     chat_json: Mapped[str | None] = mapped_column(Text, nullable=True)         # messages typed in the meeting chat
     share_token: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)  # private read-only link
     share_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    project_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    project_locked: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)  # moved by hand
     tries: Mapped[int | None] = mapped_column(Integer, nullable=True)        # attempts at writing the report
     writing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # last attempt began
     followups_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # promise tracker; None = not looked for
@@ -210,6 +212,19 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String(8), default="user")  # user | bot
     text: Mapped[str] = mapped_column(Text, default="")
     extra_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # proof lines and any action (bot only)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Project(Base):
+    """A client or project: the meetings that belong together, and the story written across them."""
+    __tablename__ = "projects"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    name: Mapped[str] = mapped_column(String(200), default="")
+    key: Mapped[str] = mapped_column(Text, default="")                # title patterns used for grouping, "|" between
+    story_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    story_basis: Mapped[str | None] = mapped_column(String(64), nullable=True)  # which meetings it was written from
+    story_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

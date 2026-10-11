@@ -565,11 +565,18 @@ def report(rid):
     from .reports import plain
     copies = {"summary": plain(m.report_md, "Summary"), "actions": plain(m.report_md, "Action items"),
               "all": f"{m.title}\n" + plain(m.report_md)}
+    from . import projects as P
+    from .models import Project
+    if not m.project_id and m.status == "done":
+        P.assign(Session(), g.user)
+    all_projects = Session.query(Project).filter_by(user_id=g.user.id).order_by(Project.name).all()
+    project = next((p for p in all_projects if p.id == m.project_id), None)
     fu_subject, fu_body = _split_subject(m.followup_email)
     typed = _typed_chat(m)
     return render_template("report.html", m=m, report_html=html, part_rows=part_rows, copies=copies,
                            fu_subject=fu_subject, fu_body=fu_body,
                            typed=typed, typed_links=_links_in(typed), share_url=_share_url(m),
+                           project=project, all_projects=all_projects,
                            fu_to=",".join(p["email"] for p in share_to if p["status"].startswith("Attended")),
                            mentions=ments, people=people, chapters=chapters, share_to=share_to,
                            followups=followups, score=score,
@@ -1084,6 +1091,132 @@ def task_remind(tid):
     except Exception as e:
         flash(str(e))
     return redirect(url_for("tasks_page", show=request.form.get("show", "open")))
+
+
+# ---------- Projects (meetings that belong together, and their story) ----------
+
+def _own_project(pid):
+    from .models import Project
+    p = Session.get(Project, pid)
+    if not p or p.user_id != g.user.id:
+        abort(404)
+    return p
+
+
+@app.route("/projects")
+@login_required
+def projects_page():
+    from . import projects as P
+    from .models import Project
+    P.assign(Session(), g.user)
+    rows = []
+    for p in Session.query(Project).filter_by(user_id=g.user.id):
+        ms = P.meetings_of(Session(), g.user, p)
+        if not ms:
+            continue
+        ids = [m.id for m in ms]
+        rows.append({"p": p, "count": len(ms), "last": ms[0], "story": P.story(p),
+                     "open": Session.query(Task).filter(Task.meeting_id.in_(ids), Task.done.is_(False)).count()})
+    rows.sort(key=lambda r: tasks._aware(r["last"].created_at), reverse=True)
+    groups = [r for r in rows if r["count"] > 1]
+    singles = [r for r in rows if r["count"] == 1]
+    return render_template("projects.html", groups=groups, singles=singles)
+
+
+@app.route("/projects/<int:pid>")
+@login_required
+def project_page(pid):
+    from . import projects as P
+    p = _own_project(pid)
+    P.assign(Session(), g.user)
+    ms = P.meetings_of(Session(), g.user, p)
+    _fill_times(ms)
+    story = P.story(p)
+    stale = bool(ms) and (story is None or p.story_basis != P.basis(ms))
+    by_id = {m.id: m for m in ms}
+    ids = list(by_id)
+    open_tasks = (Session.query(Task).filter(Task.meeting_id.in_(ids), Task.done.is_(False)).order_by(Task.id).all()
+                  if ids else [])
+    from .models import Project
+    others = Session.query(Project).filter(Project.user_id == g.user.id, Project.id != p.id).order_by(Project.name).all()
+    return render_template("project.html", p=p, meetings=ms, story=story, stale=stale, by_id=by_id,
+                           open_tasks=open_tasks, due={t.id: tasks.task_due(t) for t in open_tasks}, others=others)
+
+
+@app.post("/projects/<int:pid>/story")
+@login_required
+def project_story(pid):
+    """Write the project's story again (one AI call)."""
+    from . import projects as P, reports
+    p = _own_project(pid)
+    if not P.meetings_of(Session(), g.user, p):
+        return redirect(url_for("projects_page"))
+    try:
+        P.write_story(Session(), g.user, p, TZ)
+        flash("The project story is up to date.")
+    except reports.Busy:
+        flash("The free AI limit is full right now. Try again in a minute.")
+    except Exception as e:
+        Session.rollback()
+        flash(f"Couldn't write the story: {e}")
+    return redirect(url_for("project_page", pid=pid))
+
+
+@app.post("/projects/<int:pid>/rename")
+@login_required
+def project_rename(pid):
+    p = _own_project(pid)
+    name = " ".join(request.form.get("name", "").split())[:200]
+    if name:
+        p.name = name
+        Session.commit()
+        flash("Project renamed.")
+    return redirect(url_for("project_page", pid=pid))
+
+
+@app.post("/projects/<int:pid>/merge")
+@login_required
+def project_merge(pid):
+    """Move every meeting of this project into another one, then remove this one."""
+    p = _own_project(pid)
+    try:
+        into = _own_project(int(request.form.get("into", "0")))
+    except ValueError:
+        abort(404)
+    if into.id == p.id:
+        return redirect(url_for("project_page", pid=pid))
+    for m in Session.query(Meeting).filter_by(user_id=g.user.id, project_id=p.id):
+        m.project_id, m.project_locked = into.id, True
+    # new meetings with the old title now go to the merged project too
+    keys = [k for k in (into.key or "").split("|") + (p.key or "").split("|") if k]
+    into.key = "|".join(dict.fromkeys(keys))
+    into.story_basis = None
+    Session.delete(p)
+    Session.commit()
+    flash(f"Moved into “{into.name}”.")
+    return redirect(url_for("project_page", pid=into.id))
+
+
+@app.post("/report/<int:rid>/project")
+@login_required
+def meeting_project(rid):
+    """Move a meeting to another project, or to a new one."""
+    from .models import Project
+    m = _own_meeting(rid)
+    new = " ".join(request.form.get("new_name", "").split())[:200]
+    if new:
+        p = Project(user_id=g.user.id, name=new, key="")
+        Session.add(p)
+        Session.flush()
+    else:
+        try:
+            p = _own_project(int(request.form.get("project_id", "0")))
+        except ValueError:
+            abort(404)
+    m.project_id, m.project_locked = p.id, True
+    Session.commit()
+    flash(f"Moved to the project “{p.name}”.")
+    return redirect(url_for("report", rid=rid))
 
 
 # ---------- Decisions (every decision from every meeting) ----------
