@@ -173,6 +173,7 @@ class Meeting(Base):
     share_token: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)  # private read-only link
     share_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     project_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    next_agenda: Mapped[str | None] = mapped_column(Text, nullable=True)       # drafted agenda for the next meeting
     project_locked: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)  # moved by hand
     tries: Mapped[int | None] = mapped_column(Integer, nullable=True)        # attempts at writing the report
     writing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # last attempt began

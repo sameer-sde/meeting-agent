@@ -577,6 +577,7 @@ def report(rid):
                            fu_subject=fu_subject, fu_body=fu_body,
                            typed=typed, typed_links=_links_in(typed), share_url=_share_url(m),
                            project=project, all_projects=all_projects,
+                           next_when=_next_slot(m), next_link=_meeting_link(m),
                            fu_to=",".join(p["email"] for p in share_to if p["status"].startswith("Attended")),
                            mentions=ments, people=people, chapters=chapters, share_to=share_to,
                            followups=followups, score=score,
@@ -782,6 +783,57 @@ def shared_report(token):
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     resp.headers["Referrer-Policy"] = "no-referrer"
     return resp
+
+
+@app.post("/report/<int:rid>/next")
+@login_required
+def next_agenda(rid):
+    """Draft the next meeting's agenda from what is still open (one AI call)."""
+    from . import reports
+    m = _own_meeting(rid)
+    back = url_for("report", rid=rid) + "#next"
+    if m.status != "done":
+        return redirect(back)
+    series = [m] + tasks.earlier_in_series(Session(), g.user, m)
+    rows = (Session.query(Task).filter(Task.meeting_id.in_([x.id for x in series]), Task.done.is_(False))
+            .order_by(Task.id).limit(40).all())
+    todo = "\n".join(f"- {t.text} | owner: {t.owner or 'not set'} | due: {t.due or 'not set'}" for t in rows)
+    try:
+        points = reports.make_next_agenda(m.title, m.report_md, m.mom_md, todo, g.user.vocab or "")
+        if points:
+            m.next_agenda = "\n".join(points)
+            Session.commit()
+        else:
+            flash("Nothing is left open from this meeting, so there is no agenda to suggest.")
+    except reports.Busy:
+        flash("The free AI limit is full right now. Try again in a minute.")
+    except Exception as e:
+        Session.rollback()
+        flash(f"Couldn't draft the agenda: {e}")
+    return redirect(back)
+
+
+def _next_slot(m):
+    """Same weekday and time as this meeting, in the coming week (for the schedule form)."""
+    from datetime import timedelta
+    start = m.started_at or m.created_at
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    nxt = start.astimezone(TZ) + timedelta(days=7)
+    now = datetime.now(TZ)
+    while nxt <= now:
+        nxt += timedelta(days=7)
+    return nxt.strftime("%Y-%m-%dT%H:%M")
+
+
+def _meeting_link(m):
+    """The link this meeting was scheduled with, when the app knows it."""
+    from .models import Agenda
+    if not m.native_id or len(m.native_id) < 6:
+        return ""
+    row = (Session.query(Agenda).filter(Agenda.user_id == m.user_id, Agenda.link.contains(m.native_id))
+           .order_by(Agenda.id.desc()).first())
+    return row.link if row else ""
 
 
 @app.post("/report/<int:rid>/retry")

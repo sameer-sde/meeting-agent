@@ -64,6 +64,10 @@ pre{white-space:pre-wrap;font:12px/1.6 'JetBrains Mono',monospace;color:var(--mu
 .danger .hint{margin:12px auto;max-width:56ch}
 #followup input,#followup textarea{width:100%}
 #followup textarea{background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--ink);font:14px/1.55 Manrope,sans-serif;padding:12px 14px;resize:vertical}
+#next textarea{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--ink);font:14px/1.6 Manrope,sans-serif;padding:12px 14px;resize:vertical}
+#next input{width:100%}
+.nextgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:720px){.nextgrid{grid-template-columns:1fr}}
 .fuacts{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:center}
 .fuacts form{margin:0}
 .projsel form{margin-top:8px}
@@ -167,6 +171,7 @@ p.more{margin:14px 0 0}
     {% if lines %}<button type="button" class="btn ghost" data-open-chat>Chat with this meeting</button>{% endif %}
     <a class="btn ghost" href="#share" onclick="document.getElementById('share').open=true">Share with attendees</a>
     {% if m.status == 'done' and m.report_md %}<a class="btn ghost" href="#followup" onclick="document.getElementById('followup').open=true">Follow-up email</a>{% endif %}
+    {% if m.status == 'done' and m.report_md %}<a class="btn ghost" href="#next" onclick="document.getElementById('next').open=true">Next meeting</a>{% endif %}
     <form method="post" action="{{ url_for('pin', rid=m.id) }}" style="display:inline"><button class="btn ghost">{{ 'Unpin' if m.pinned else 'Pin to top' }}</button></form>
   </div>
   <details class="panel pop" id="share" {{ 'open' if share_url }}><summary><h2>Share this report</h2></summary>
@@ -193,6 +198,26 @@ p.more{margin:14px 0 0}
       <div class="fuacts">{% for d in (7, 30) %}<form method="post" action="{{ url_for('share_link', rid=m.id) }}"><input type="hidden" name="days" value="{{ d }}"><button class="btn {{ 'accent' if d == 7 else 'ghost' }}">Make a link for {{ d }} days</button></form>{% endfor %}</div>
       {% endif %}
     </div>
+  </details>
+  <details class="panel pop" id="next" {{ 'open' if m.next_agenda }}><summary><h2>Next meeting</h2></summary>
+    {% if m.next_agenda %}
+    <p class="hint">A draft agenda from what is still open: unfinished tasks, open questions and points that were not covered. Edit it, then schedule the next meeting. Its minutes will check this agenda.</p>
+    <form method="post" action="{{ url_for('schedule') }}" class="nextform">
+      <label class="f" for="na">Agenda, one point per line</label>
+      <textarea id="na" name="agenda" rows="7" maxlength="2500">{{ m.next_agenda }}</textarea>
+      <div class="nextgrid">
+        <div><label class="f" for="nt">Title</label><input type="text" id="nt" name="title" value="{{ m.title }}" maxlength="200"></div>
+        <div><label class="f" for="nw">Date and time</label><input type="datetime-local" id="nw" name="when" value="{{ next_when }}" required></div>
+      </div>
+      <label class="f" for="nl">Meeting link</label>
+      <input type="text" id="nl" name="link" value="{{ next_link }}" placeholder="Paste the Teams or Google Meet link" required>
+      <div class="fuacts"><button class="btn accent">Schedule the next meeting</button></div>
+    </form>
+    <form method="post" action="{{ url_for('next_agenda', rid=m.id) }}" class="fuacts"><button class="btn ghost">Draft again</button></form>
+    {% else %}
+    <p class="hint">Drafts the next meeting's agenda from what is still open, so you can schedule it in one click. Uses one AI call.</p>
+    <form method="post" action="{{ url_for('next_agenda', rid=m.id) }}"><button class="btn accent">Draft the next agenda</button></form>
+    {% endif %}
   </details>
   <details class="panel pop" id="followup" {{ 'open' if fu_body }}><summary><h2>Follow-up email</h2></summary>
     {% if fu_body %}

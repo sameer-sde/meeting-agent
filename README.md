@@ -13,6 +13,14 @@ page with overdue ones in red and a one-click reminder; every decision
 lands on a searchable Decisions page; a promise tracker checks whether last
 meeting's tasks got done; and a Monday email sums up the week.
 
+**Project Story** joins related meetings (same title or same meeting link)
+into one page: what changed between meetings ("SharePoint: excluded on
+3 Sep, used for document lookup on 8 Oct"), what is still open and for how
+long, a timeline, and a status update ready to paste. After any meeting, one
+click drafts the **next meeting's agenda** from what is still open and
+schedules it. Messages and links typed in the **meeting chat** are kept with
+the report, and any report can be shared as a **private read-only link**.
+
 A chatbot sits in the corner of every page. Ask it anything about a
 meeting, or about all of them, by typing or by voice, in English, Hinglish,
 Hindi or Telugu. It answers with the exact transcript lines as proof,
@@ -39,7 +47,9 @@ Live: **[meeting-agent-alpha.vercel.app](https://meeting-agent-alpha.vercel.app)
 | Bot leaves an idle call after        | 10 minutes of silence                        |
 | Outputs per meeting                  | Report card, MOM (copy / Word / PDF), transcript, recording, chapters, participation, mentions, attendance CSV, score, tasks, decisions, agenda check, open questions, promise tracker |
 | Minutes styles                       | 3: standard (Teams notes), daily status update, interview |
-| AI calls per meeting                 | 3: report card, MOM, and chapters + tasks + promise tracker (+1 for a follow-up email, only when asked) |
+| Project Story                        | 1 AI call per refresh, reads the latest 12 meetings of a project; saved until they change |
+| Share links                          | Read-only, 7 or 30 days, can be turned off; no transcript or recording |
+| AI calls per meeting                 | 3: report card, MOM, and chapters + tasks + promise tracker (+1 each for a follow-up email or next agenda, only when asked) |
 | AI calls per chat message            | 1, streamed word by word                     |
 | Meetings the chat can search         | Up to 300; it reads the best 12 in full for each question |
 | Chat actions                         | 10, each one needs a Confirm click           |
@@ -97,6 +107,8 @@ graph TB
         TK[Tasks page<br/>overdue, reminders]
         DC[Decisions page]
         WK[Monday summary email]
+        PS[Project Story<br/>what changed, still open]
+        SL[Private share link]
     end
 
     L --> B
@@ -113,7 +125,10 @@ graph TB
     DB --> C
     DB --> TK
     DB --> DC
+    DB --> PS
+    DB --> SL
     T -->|Monday 9 AM| WK
+    B -->|meeting chat, every minute| T
 ```
 
 ## Layered design decisions
@@ -165,6 +180,10 @@ Each layer adds one capability with a known cost.
 | Fix a speaker    | Correct a mis-heard name in one meeting         | Saved as a name map; transcript kept as heard | Report, MOM and tasks use the right name |
 | Chat search      | Picks the meetings that match the question, and dates like "September" | Keyword scoring, no AI | Old meetings answer too, with less text sent |
 | Chat feedback    | 👍 / 👎 under every answer, kept after clearing | One small table                   | Wrong answers can be found and fixed     |
+| Project Story    | Meetings grouped by title or link; what changed, still open, timeline, status update | One LLM call per refresh, cached | The history of a client in one page, before the next call |
+| Next agenda      | Draft of the next meeting's agenda from open tasks, questions and uncovered points | One LLM call, only when pressed | Each meeting picks up where the last one stopped |
+| Meeting chat     | Messages and links typed in the meeting chat, kept and read by the report | One Vexa read per minute while the bot is in | Links and decisions typed, not spoken, aren't lost |
+| Share link       | Read-only report and minutes for people without an account | Random token, expiry, can be turned off | Send notes to a client in one link |
 
 ## Quick start
 
@@ -206,6 +225,10 @@ Telegram bot, and the every-minute `/cron/tick` ping.
 | Report card     | Email and report page              | Summary, key decisions, action items, who said what, open questions |
 | MOM             | **Minutes of Meeting** button      | Teams-style meeting notes, agenda check, open questions, follow-up tasks, action table (SN, Action By, Target Date, Status); copy for email, Word or PDF |
 | Follow-up email | **Follow-up email** button         | Subject and text with key points and action items; copy or open in your email app |
+| Next meeting    | **Next meeting** button            | Draft agenda from what is still open, then schedule the next meeting with it |
+| Meeting chat    | **Chat** tab                       | Every message typed in the meeting chat, and every link shared   |
+| Share link      | **Share with attendees**           | A private read-only page with the report card and minutes, 7 or 30 days |
+| Project Story   | **Projects** page                  | What changed between meetings, what is still open, timeline, people, status update |
 | Participation   | **Participation** tab              | Share of talk time, minutes, turns, High / Medium / Low per person |
 | Mentions        | **Mentions** tab                   | How often each name was said, at what time, by whom, in which sentence |
 | Attendance      | **Attendance** tab, CSV download   | Name, email, designation, attended or invited-but-not-heard      |
@@ -291,6 +314,9 @@ none. Questions it couldn't answer are saved (text only) for the owner.
 | GET      | `/report/<id>/mom.docx`       | Minutes of Meeting as a Word file               |
 | GET      | `/tasks`                      | Action items from every meeting, overdue first  |
 | GET      | `/decisions`                  | Every decision, searchable                      |
+| GET      | `/projects`                   | Projects: meetings grouped by title or link     |
+| GET      | `/projects/<id>`              | One project's story                             |
+| GET      | `/r/<token>`                  | A shared report, read-only, no sign-in          |
 | GET      | `/chat/feedback`              | Chat answers you marked 👍 or 👎                |
 | GET      | `/live/<platform>/<id>`       | Chat with a meeting that is still running       |
 | GET/POST | `/people`                     | Team directory (name, email, designation)       |
@@ -310,6 +336,12 @@ none. Questions it couldn't answer are saved (text only) for the owner.
 | POST   | `/report/<id>/extras/generate`| -                        | Chapters, tasks and promise tracker  |
 | POST   | `/report/<id>/agenda`         | `agenda`, `kind`, `rewrite` | Set the agenda and meeting type, optionally rewrite the MOM |
 | POST   | `/report/<id>/followup`       | -                        | Write the follow-up email draft      |
+| POST   | `/report/<id>/next`           | -                        | Draft the next meeting's agenda      |
+| POST   | `/report/<id>/link`           | `days`: 7, 30 or 0       | Make, renew or turn off the share link |
+| POST   | `/report/<id>/project`        | `project_id` or `new_name` | Move a meeting to another project  |
+| POST   | `/projects/<id>/story`        | -                        | Write or refresh the project story   |
+| POST   | `/projects/<id>/rename`       | `name`                   | Rename a project                     |
+| POST   | `/projects/<id>/merge`        | `into`                   | Move all its meetings into another project |
 | POST   | `/report/<id>/speaker`        | `old`, `new`             | Fix a speaker's name in one meeting  |
 | POST   | `/report/<id>/pin`            | `next`                   | Pin or unpin a meeting               |
 | POST   | `/report/<id>/rename`         | `title`, `next`          | Rename a meeting (also from the dashboard) |
@@ -341,13 +373,13 @@ none. Questions it couldn't answer are saved (text only) for the owner.
 ### Background
 | Method | Path                    | Purpose                                                   |
 |--------|-------------------------|-----------------------------------------------------------|
-| GET    | `/cron/tick?key=...`    | One pass: Telegram, hello messages, reports, check-ins, briefs, Monday summary |
+| GET    | `/cron/tick?key=...`    | One pass: Telegram, hello messages, meeting chat, reports, check-ins, briefs, Monday summary |
 | GET    | `/healthz`              | Liveness check                                            |
 
 `/cron/tick` returns what it did:
 
 ```json
-{"asked":0,"briefs":0,"errors":0,"greeted":1,"reports":1,"telegram":2,"users":1,"weekly":0}
+{"asked":0,"briefs":0,"chat":3,"errors":0,"greeted":1,"reports":1,"telegram":2,"users":1,"weekly":0}
 ```
 
 ## Telegram check-in workflow
@@ -403,16 +435,18 @@ Never commit a real `.env`. `.env.example` lists every setting with empty values
 ```
 web/
   app.py          routes: sign-in, dashboard, setup, reports, tasks, chat, people, settings
-  tasks.py        the tick: Telegram, hello messages, reports, check-ins, briefs, promise tracker,
-                  reminders, agenda matching, Monday summary
+  tasks.py        the tick: Telegram, hello messages, meeting chat, reports, check-ins, briefs,
+                  promise tracker, reminders, agenda matching, Monday summary
+  projects.py     Project Story: grouping meetings, writing and checking the story
   chat.py         chatbot: meeting search, prompt, proof lines, actions, next questions, feedback
   help_bot.py     sign-in help bot: saves questions it had no answer for
   vexa.py         meeting bot API client, recordings, live transcript
-  reports.py      Gemini calls: report card, MOM (3 styles), chapters and tasks, follow-up email, chat
+  reports.py      Gemini calls: report card, MOM (3 styles), chapters and tasks, follow-up email,
+                  next agenda, project story, chat
   analytics.py    participation, mentions, attendance, timeline, score, speaker names, due dates (no AI)
   word.py         Minutes of Meeting as a .docx file (no extra package)
   mailer.py       report emails and sign-in codes
-  models.py       users, meetings, tasks, chat, feedback, agendas, people (keys encrypted)
+  models.py       users, meetings, projects, tasks, chat, meeting chat, feedback, agendas, people
   templates/      pages
 main.py           entry point for Vercel
 DEPLOY.md         how to put it online
@@ -437,6 +471,8 @@ DEPLOY.md         how to put it online
 - Each user's Vexa keys are encrypted at rest. Passwords and sign-in codes are stored only as hashes.
 - Users can delete any single meeting (report, transcript, tasks and chat), or their whole account, at any time. Vexa keeps its own copy of the transcript and audio in the user's Vexa account.
 - The chatbot only reads the signed-in user's own meetings, and it changes nothing without a Confirm click.
+- A share link opens one report and its minutes, read-only, without the transcript or recording. Anyone holding the link can open it until it expires (7 or 30 days) or is turned off; making a new link stops the old one. Shared pages tell search engines not to list them.
+- Messages typed in the meeting chat are saved only while your bot is in the meeting, and are deleted with the meeting.
 - Reminders, follow-up emails and the Monday summary are sent from the app's email address. Reminders only go to people whose email you added on the People page, and never more than once a day per task.
 - The sign-in help bot saves the text of questions it couldn't answer, plus a salted hash for rate limiting. It does not store IP addresses.
 - On Gemini's free tier, Google may use submitted content to improve its products. Use a paid tier for sensitive meetings.
@@ -458,6 +494,8 @@ DEPLOY.md         how to put it online
 - [x] Decisions page, overdue tasks, one-click reminders, Monday summary
 - [x] Names and terms list, follow-up email draft
 - [x] Chat search across all meetings, more actions, next questions, 👍 / 👎 feedback
+- [x] Project Story: what changed across meetings, still open, status update
+- [x] Next meeting's agenda in one click, meeting chat on the report, private share links
 - [ ] Team space: one set of meetings, tasks and decisions for the whole team
 - [ ] Record any meeting from the browser (no Teams or Meet needed)
 - [ ] Send tasks to Planner, Jira or Trello

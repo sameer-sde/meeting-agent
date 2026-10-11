@@ -424,6 +424,43 @@ def make_followup(title, date, sender, notes, tasks, words=""):
     return re.sub(r"^```\w*\n?|\n?```$", "", text).strip()
 
 
+NEXT_AGENDA_PROMPT = """Draft the agenda for the NEXT meeting of this series: "{title}".
+Use only the notes below from the meeting that just happened: tasks still open, questions nobody
+answered, agenda points that were not covered or only partly covered, and anything people said
+they would come back to next time.
+
+Reply with 3 to 8 lines and nothing else. Each line is one agenda point, short (3 to 10 words),
+starting with "- ". Put the most important first. Name the owner in brackets when there is one,
+for example "- Architecture diagram review (Sunil)". Do not invent topics. Write in clear English.
+{words}
+OPEN TASKS:
+{tasks}
+
+REPORT CARD:
+{report}
+
+MINUTES:
+{mom}
+"""
+
+
+def make_next_agenda(title, report_md, mom_md, tasks, words=""):
+    prompt = (NEXT_AGENDA_PROMPT.replace("{title}", title or "the meeting").replace("{words}", words_note(words))
+              .replace("{tasks}", tasks or "(none)").replace("{report}", (report_md or "(none)")[:8000])
+              .replace("{mom}", (mom_md or "(none)")[:8000]))
+    lines = [x.strip() for x in _llm(prompt).splitlines() if x.strip()]
+    bullets = [x for x in lines if re.match(r"^([-*•]|\d+[.)])\s+", x)]
+    points = []
+    # only bullet lines are points: an intro like "Here is the agenda:" or a "Nothing to add" is not
+    if not bullets and len(lines) >= 3 and not any(x.endswith(":") for x in lines):
+        bullets = lines                        # a plain list without dashes still counts
+    for line in bullets:
+        p = " ".join(re.sub(r"^([-*•]|\d+[.)])\s+", "", line).replace("**", "").split())
+        if 2 < len(p) <= 200 and p not in points:
+            points.append(p)
+    return points[:8]
+
+
 STORY_PROMPT = """Below are the report cards of several meetings that belong to one project: "{name}".
 They are in date order, oldest first. Read them as one story.
 
